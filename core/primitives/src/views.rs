@@ -764,7 +764,8 @@ pub struct BlockHeaderView {
     pub challenges_root: CryptoHash,
     /// Legacy json number. Should not be used.
     pub timestamp: u64,
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")]
+    #[schemars(with = "String")] 
     pub timestamp_nanosec: u64,
     pub random_value: CryptoHash,
     pub validator_proposals: Vec<ValidatorStakeView>,

@@ -4604,6 +4604,7 @@ dependencies = [
  "near-network",
  "near-o11y",
  "near-primitives",
+ "schemars",
  "serde",
  "serde_json",
  "serde_with",
