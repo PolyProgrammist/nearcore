@@ -5,6 +5,7 @@ use sha2::Digest;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
+use schemars::JsonSchema;
 
 #[derive(
     Copy,
@@ -19,6 +20,7 @@ use std::io::Write;
     borsh::BorshDeserialize,
     borsh::BorshSerialize,
     ProtocolSchema,
+    JsonSchema
 )]
 #[as_ref(forward)]
 #[as_mut(forward)]

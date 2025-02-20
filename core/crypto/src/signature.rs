@@ -10,6 +10,8 @@ use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::str::FromStr;
 use std::sync::LazyLock;
+use schemars::{schema::Schema, gen::SchemaGenerator, JsonSchema};
+use schemars;
 
 pub static SECP256K1: LazyLock<secp256k1::Secp256k1<secp256k1::All>> =
     LazyLock::new(secp256k1::Secp256k1::new);
@@ -67,11 +69,21 @@ fn split_key_type_data(value: &str) -> Result<(KeyType, &str), crate::errors::Pa
 }
 
 #[derive(
-    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema,
+    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema
 )]
 #[cfg_attr(test, derive(bolero::TypeGenerator))]
 #[as_ref(forward)]
 pub struct Secp256K1PublicKey([u8; 64]);
+
+impl JsonSchema for Secp256K1PublicKey {
+    fn schema_name() -> String {
+        "Secp256K1PublicKey".to_string()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        Vec::<u8>::json_schema(gen) // Treat as Vec<u8> in schema
+    }
+}
 
 impl TryFrom<&[u8]> for Secp256K1PublicKey {
     type Error = crate::errors::ParseKeyError;
@@ -91,7 +103,7 @@ impl std::fmt::Debug for Secp256K1PublicKey {
 }
 
 #[derive(
-    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema,
+    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema, JsonSchema
 )]
 #[cfg_attr(test, derive(bolero::TypeGenerator))]
 #[as_ref(forward)]
@@ -115,7 +127,7 @@ impl std::fmt::Debug for ED25519PublicKey {
 }
 
 /// Public key container supporting different curves.
-#[derive(Clone, PartialEq, PartialOrd, Ord, Eq, ProtocolSchema)]
+#[derive(Clone, PartialEq, PartialOrd, Ord, Eq, ProtocolSchema, JsonSchema)]
 #[cfg_attr(test, derive(bolero::TypeGenerator))]
 pub enum PublicKey {
     /// 256 bit elliptic curve based public-key.
@@ -499,11 +511,27 @@ impl Debug for Secp256K1Signature {
     }
 }
 
+// #[derive(Debug, serde::Serialize, serde::Deserialize, JsonSchema)]
+// pub struct MyWrapper {
+//     #[schemars(flatten)]
+//     inner: ed25519_dalek::Signature,
+// }
+
 /// Signature container supporting different curves.
 #[derive(Clone, PartialEq, Eq, ProtocolSchema)]
 pub enum Signature {
     ED25519(ed25519_dalek::Signature),
     SECP256K1(Secp256K1Signature),
+}
+
+impl JsonSchema for Signature {
+    fn schema_name() -> String {
+        "ExternalStruct".to_string()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        gen.subschema_for::<u64>()
+    }
 }
 
 // This `Hash` implementation is safe since it retains the property

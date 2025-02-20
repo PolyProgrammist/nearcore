@@ -58,6 +58,8 @@ use std::ops::Range;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use validator_stake_view::ValidatorStakeView;
+use schemars::JsonSchema;
+use crate::serialize;
 
 /// A view of the account
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -744,7 +746,7 @@ impl From<Challenge> for ChallengeView {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, JsonSchema)]
 pub struct BlockHeaderView {
     pub height: BlockHeight,
     pub prev_height: Option<BlockHeight>,
@@ -762,21 +764,21 @@ pub struct BlockHeaderView {
     pub challenges_root: CryptoHash,
     /// Legacy json number. Should not be used.
     pub timestamp: u64,
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub timestamp_nanosec: u64,
     pub random_value: CryptoHash,
     pub validator_proposals: Vec<ValidatorStakeView>,
     pub chunk_mask: Vec<bool>,
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub gas_price: Balance,
     pub block_ordinal: Option<NumBlocks>,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub validator_reward: Balance,
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub total_supply: Balance,
     pub challenges_result: ChallengesResult,
     pub last_final_block: CryptoHash,
@@ -928,7 +930,7 @@ impl From<BlockHeaderInnerLiteView> for BlockHeaderInnerLite {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, JsonSchema)]
 pub struct ChunkHeaderView {
     pub chunk_hash: CryptoHash,
     pub prev_block_hash: CryptoHash,
@@ -942,12 +944,12 @@ pub struct ChunkHeaderView {
     pub gas_used: Gas,
     pub gas_limit: Gas,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub validator_reward: Balance,
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub balance_burnt: Balance,
     pub outgoing_receipts_root: CryptoHash,
     pub tx_root: CryptoHash,
@@ -1082,7 +1084,7 @@ impl From<ChunkHeaderView> for ShardChunkHeader {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, JsonSchema)]
 pub struct BlockView {
     pub author: AccountId,
     pub header: BlockHeaderView,
@@ -1817,9 +1819,10 @@ pub mod validator_stake_view {
     use borsh::{BorshDeserialize, BorshSerialize};
     use near_primitives_core::types::AccountId;
     use serde::Deserialize;
+    use schemars::JsonSchema;
 
     #[derive(
-        BorshSerialize, BorshDeserialize, serde::Serialize, Deserialize, Debug, Clone, Eq, PartialEq,
+        BorshSerialize, BorshDeserialize, serde::Serialize, Deserialize, Debug, Clone, Eq, PartialEq, JsonSchema
     )]
     #[serde(tag = "validator_stake_struct_version")]
     pub enum ValidatorStakeView {
@@ -1876,11 +1879,12 @@ pub mod validator_stake_view {
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
+    JsonSchema,
 )]
 pub struct ValidatorStakeViewV1 {
     pub account_id: AccountId,
     pub public_key: PublicKey,
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub stake: Balance,
 }
 
@@ -2449,12 +2453,12 @@ pub struct SplitStorageInfoView {
     pub hot_db_kind: Option<String>,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct CongestionInfoView {
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub delayed_receipts_gas: u128,
 
-    #[serde(with = "dec_format")]
+    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
     pub buffered_receipts_gas: u128,
 
     pub receipt_bytes: u64,
