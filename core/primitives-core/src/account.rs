@@ -7,6 +7,8 @@ use near_account_id::AccountId;
 use near_schema_checker_lib::ProtocolSchema;
 use std::borrow::Cow;
 use std::io;
+use schemars;
+use schemars::JsonSchema;
 
 #[derive(
     BorshSerialize,
@@ -434,6 +436,7 @@ impl BorshSerialize for Account {
     serde::Serialize,
     serde::Deserialize,
     ProtocolSchema,
+    JsonSchema,
 )]
 pub struct AccessKey {
     /// Nonce for this access key, used for tx nonce generation. When access key is created, nonce
@@ -465,6 +468,7 @@ impl AccessKey {
     serde::Serialize,
     serde::Deserialize,
     ProtocolSchema,
+    JsonSchema,
 )]
 pub enum AccessKeyPermission {
     FunctionCall(FunctionCallPermission),
@@ -489,6 +493,7 @@ pub enum AccessKeyPermission {
     Clone,
     Debug,
     ProtocolSchema,
+    JsonSchema,
 )]
 pub struct FunctionCallPermission {
     /// Allowance is a balance limit to use by this access key to pay for function call gas and
@@ -498,6 +503,7 @@ pub struct FunctionCallPermission {
     /// NOTE: To change or increase the allowance, the old access key needs to be deleted and a new
     /// access key should be created.
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub allowance: Option<Balance>,
 
     // This isn't an AccountId because already existing records in testnet genesis have invalid
