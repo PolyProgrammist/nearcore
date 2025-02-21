@@ -75,16 +75,6 @@ fn split_key_type_data(value: &str) -> Result<(KeyType, &str), crate::errors::Pa
 #[as_ref(forward)]
 pub struct Secp256K1PublicKey([u8; 64]);
 
-impl JsonSchema for Secp256K1PublicKey {
-    fn schema_name() -> String {
-        "Secp256K1PublicKey".to_string()
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        Vec::<u8>::json_schema(gen) // Treat as Vec<u8> in schema
-    }
-}
-
 impl TryFrom<&[u8]> for Secp256K1PublicKey {
     type Error = crate::errors::ParseKeyError;
 
@@ -127,7 +117,7 @@ impl std::fmt::Debug for ED25519PublicKey {
 }
 
 /// Public key container supporting different curves.
-#[derive(Clone, PartialEq, PartialOrd, Ord, Eq, ProtocolSchema, JsonSchema)]
+#[derive(Clone, PartialEq, PartialOrd, Ord, Eq, ProtocolSchema)]
 #[cfg_attr(test, derive(bolero::TypeGenerator))]
 pub enum PublicKey {
     /// 256 bit elliptic curve based public-key.
@@ -281,6 +271,16 @@ impl FromStr for PublicKey {
             KeyType::ED25519 => Self::ED25519(ED25519PublicKey(decode_bs58(key_data)?)),
             KeyType::SECP256K1 => Self::SECP256K1(Secp256K1PublicKey(decode_bs58(key_data)?)),
         })
+    }
+}
+
+impl JsonSchema for PublicKey {
+    fn schema_name() -> String {
+        "PublicKey".to_string()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(gen)
     }
 }
 
@@ -524,16 +524,6 @@ pub enum Signature {
     SECP256K1(Secp256K1Signature),
 }
 
-impl JsonSchema for Signature {
-    fn schema_name() -> String {
-        "ExternalStruct".to_string()
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        gen.subschema_for::<u64>()
-    }
-}
-
 // This `Hash` implementation is safe since it retains the property
 // `k1 == k2 ⇒ hash(k1) == hash(k2)`.
 impl Hash for Signature {
@@ -726,6 +716,16 @@ impl<'de> serde::Deserialize<'de> for Signature {
         s.parse().map_err(|err: crate::errors::ParseSignatureError| {
             serde::de::Error::custom(err.to_string())
         })
+    }
+}
+
+impl JsonSchema for Signature {
+    fn schema_name() -> String {
+        "Signature".to_string()
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        String::json_schema(gen)
     }
 }
 

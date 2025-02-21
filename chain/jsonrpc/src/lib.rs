@@ -308,7 +308,7 @@ impl JsonRpcHandler {
     // `process_request_internal`.
     async fn process_request(&self, request: Request) -> Result<Value, RpcError> {
 
-        let schema = schema_for!(        near_primitives::views::BlockView        );
+        let schema = schema_for!(        RpcTransactionResponse       );
         let json_schema = serde_json::to_string_pretty(&schema).unwrap();
         let mut file = File::create("output.txt"); // Overwrites if file exists
         if let Ok(mut thefile) = file {

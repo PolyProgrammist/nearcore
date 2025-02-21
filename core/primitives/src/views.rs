@@ -774,16 +774,16 @@ pub struct BlockHeaderView {
     pub random_value: CryptoHash,
     pub validator_proposals: Vec<ValidatorStakeView>,
     pub chunk_mask: Vec<bool>,
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub gas_price: Balance,
     pub block_ordinal: Option<NumBlocks>,
     /// TODO(2271): deprecated.
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub validator_reward: Balance,
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub total_supply: Balance,
     pub challenges_result: ChallengesResult,
     pub last_final_block: CryptoHash,
@@ -949,12 +949,12 @@ pub struct ChunkHeaderView {
     pub gas_used: Gas,
     pub gas_limit: Gas,
     /// TODO(2271): deprecated.
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub rent_paid: Balance,
     /// TODO(2271): deprecated.
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub validator_reward: Balance,
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub balance_burnt: Balance,
     pub outgoing_receipts_root: CryptoHash,
     pub tx_root: CryptoHash,
@@ -1906,7 +1906,7 @@ pub mod validator_stake_view {
 pub struct ValidatorStakeViewV1 {
     pub account_id: AccountId,
     pub public_key: PublicKey,
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub stake: Balance,
 }
 
@@ -2482,10 +2482,10 @@ pub struct SplitStorageInfoView {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct CongestionInfoView {
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub delayed_receipts_gas: u128,
 
-    #[serde(serialize_with = "dec_format::serialize", deserialize_with="dec_format::deserialize")]
+    #[serde(with = "dec_format")] #[schemars(with = "String")]
     pub buffered_receipts_gas: u128,
 
     pub receipt_bytes: u64,
