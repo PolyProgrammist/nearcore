@@ -30,8 +30,9 @@ use near_jsonrpc_primitives::types::split_storage::{
     RpcSplitStorageInfoRequest, RpcSplitStorageInfoResponse,
 };
 use near_jsonrpc_primitives::types::transactions::{
-    RpcSendTransactionRequest, RpcTransactionResponse,
+    RpcSendTransactionRequest, RpcTransactionResponse
 };
+use near_jsonrpc_primitives::types::blocks::RpcBlockResponse;
 use near_network::debug::GetDebugStatus;
 use near_network::tcp::{self, ListenerAddr};
 use near_o11y::metrics::{prometheus, Encoder, TextEncoder};
@@ -308,7 +309,7 @@ impl JsonRpcHandler {
     // `process_request_internal`.
     async fn process_request(&self, request: Request) -> Result<Value, RpcError> {
 
-        let schema = schema_for!(        RpcTransactionResponse       );
+        let schema = schema_for!(        RpcBlockResponse       );
         let json_schema = serde_json::to_string_pretty(&schema).unwrap();
         let mut file = File::create("output.txt"); // Overwrites if file exists
         if let Ok(mut thefile) = file {

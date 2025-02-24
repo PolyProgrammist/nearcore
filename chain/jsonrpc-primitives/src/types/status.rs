@@ -9,14 +9,14 @@ use near_primitives::views::{
     SplitStorageInfoView, SyncStatusView,
 };
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RpcStatusResponse {
     #[serde(flatten)]
     pub status_response: near_primitives::views::StatusResponse,
 }
 
 #[cfg(feature = "debug_types")]
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug)]
 pub enum DebugStatusResponse {
     SyncStatus(SyncStatusView),
     CatchupStatus(Vec<CatchupStatusView>),
@@ -39,15 +39,15 @@ pub enum DebugStatusResponse {
 }
 
 #[cfg(feature = "debug_types")]
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 pub struct RpcDebugStatusResponse {
     pub status_response: DebugStatusResponse,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RpcHealthResponse;
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcStatusError {
     #[error("Node is syncing")]
