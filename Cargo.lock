@@ -4664,6 +4664,7 @@ dependencies = [
  "near-crypto",
  "near-primitives",
  "near-schema-checker-lib",
+ "near-time",
  "schemars",
  "serde",
  "serde_json",

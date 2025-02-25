@@ -124,7 +124,7 @@ pub struct ApprovalHistoryEntry {
     pub parent_height: BlockHeight,
     pub target_height: BlockHeight,
     // Time when we actually created the approval and sent it out.
-    #[schemars(with = "String")] // TODO fix
+    #[schemars(with = "String")]
     pub approval_creation_time: Utc,
     // The moment when we were ready to send this approval (or skip)
     pub timer_started_ago_millis: u64,
@@ -137,7 +137,7 @@ pub struct ApprovalHistoryEntry {
 #[derive(serde::Serialize, schemars::JsonSchema, Debug, Default, Clone)]
 pub struct ChunkProduction {
     // Time when we produced the chunk.
-    #[schemars(with = "String")] // TODO fix
+    #[schemars(with = "Option<String>")]
     pub chunk_production_time: Option<Utc>,
     // How long did the chunk production take (reed solomon encoding, preparing fragments etc.)
     // Doesn't include network latency.
@@ -190,7 +190,7 @@ pub struct ApprovalAtHeightStatus {
     #[schemars(with = "String")] // TODO fix
     pub approvals: HashMap<AccountId, (ApprovalInner, Utc)>,
     // Time at which we received 2/3 approvals (doomslug threshold).
-    #[schemars(with = "String")] // TODO fix
+    #[schemars(with = "Option<String>")]
     pub ready_at: Option<Utc>,
 }
 

@@ -9,6 +9,8 @@ use near_primitives::views::{
     SplitStorageInfoView, SyncStatusView,
 };
 
+use near_time::DurationSchemeProvider;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RpcStatusResponse {
     #[serde(flatten)]
@@ -53,8 +55,7 @@ pub enum RpcStatusError {
     #[error("Node is syncing")]
     NodeIsSyncing,
     #[error("No blocks for {elapsed:?}")]
-     // TODO fix
-    NoNewBlocks { #[schemars(with = "String")] elapsed: time::Duration },
+    NoNewBlocks { #[schemars(with = "DurationSchemeProvider")] elapsed: time::Duration },
     #[error("Epoch Out Of Bounds {epoch_id:?}")]
     EpochOutOfBounds { epoch_id: near_primitives::types::EpochId },
     #[error("The node reached its limits. Try again later. More details: {error_message}")]
