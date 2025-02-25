@@ -15,21 +15,23 @@ use near_primitives::{
     views::ValidatorInfo,
 };
 use near_time::Utc;
+use schemars::schema;
 use std::collections::HashMap;
 use std::str::FromStr;
 use strum::Display;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct TrackedShardsView {
     pub shards_tracked_this_epoch: Vec<bool>,
     pub shards_tracked_next_epoch: Vec<bool>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct EpochInfoView {
     pub epoch_height: u64,
     pub epoch_id: CryptoHash,
     pub height: BlockHeight,
+    #[schemars(schema_with = "cryptohash_utc_tuple_option_schema")]
     pub first_block: Option<(CryptoHash, Utc)>,
     pub block_producers: Vec<ValidatorInfo>,
     pub chunk_producers: Vec<String>,
@@ -40,7 +42,22 @@ pub struct EpochInfoView {
     pub shards_size_and_parts: Vec<(u64, u64, bool)>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+fn cryptohash_utc_tuple_option_schema(_gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    schemars::schema::Schema::Object(schemars::schema::SchemaObject {
+        instance_type: Some(schemars::schema::InstanceType::Array.into()),
+        array: Some(Box::new(schemars::schema::ArrayValidation {
+            items: Some(schemars::schema::SingleOrVec::Vec(vec![
+                _gen.subschema_for::<CryptoHash>(),
+                _gen.subschema_for::<String>(),
+            ])),
+            ..Default::default()
+        })),
+        ..Default::default()
+    })
+}
+
+
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct DebugChunkStatus {
     pub shard_id: u64,
     pub chunk_hash: ChunkHash,
@@ -56,7 +73,7 @@ pub struct DebugChunkStatus {
     pub endorsement_ratio: Option<f64>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct DebugBlockStatus {
     pub block_hash: CryptoHash,
     pub prev_block_hash: CryptoHash,
@@ -72,13 +89,13 @@ pub struct DebugBlockStatus {
     pub gas_price_ratio: f64,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct MissedHeightInfo {
     pub block_height: u64,
     pub block_producer: Option<AccountId>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct DebugBlockStatusData {
     pub blocks: Vec<DebugBlockStatus>,
     pub missed_heights: Vec<MissedHeightInfo>,
@@ -88,13 +105,14 @@ pub struct DebugBlockStatusData {
 
 // Information about the approval created by this node.
 // Used for debug purposes only.
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Clone)]
 pub struct ApprovalHistoryEntry {
     // If target_height == base_height + 1  - this is endorsement.
     // Otherwise this is a skip.
     pub parent_height: BlockHeight,
     pub target_height: BlockHeight,
     // Time when we actually created the approval and sent it out.
+    #[schemars(with = "String")] // TODO fix
     pub approval_creation_time: Utc,
     // The moment when we were ready to send this approval (or skip)
     pub timer_started_ago_millis: u64,
@@ -104,9 +122,10 @@ pub struct ApprovalHistoryEntry {
 
 // Information about chunk produced by this node.
 // For debug purposes only.
-#[derive(serde::Serialize, Debug, Default, Clone)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Default, Clone)]
 pub struct ChunkProduction {
     // Time when we produced the chunk.
+    #[schemars(with = "String")] // TODO fix
     pub chunk_production_time: Option<Utc>,
     // How long did the chunk production take (reed solomon encoding, preparing fragments etc.)
     // Doesn't include network latency.
@@ -114,7 +133,7 @@ pub struct ChunkProduction {
 }
 // Information about the block produced by this node.
 // For debug purposes only.
-#[derive(serde::Serialize, Debug, Clone, Default)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Clone, Default)]
 pub struct BlockProduction {
     // Approvals that we received.
     pub approvals: ApprovalAtHeightStatus,
@@ -122,17 +141,19 @@ pub struct BlockProduction {
     // set if we didn't produce the block.
     pub chunks_collection_time: Vec<ChunkCollection>,
     // Time when we produced the block, None if we didn't produce the block.
+    #[schemars(with = "String")]
     pub block_production_time: Option<Utc>,
     // Whether this block is included on the canonical chain.
     pub block_included: bool,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Clone)]
 pub struct ChunkCollection {
     // Chunk producer of the chunk
     pub chunk_producer: AccountId,
     // Time when the chunk was received. Note that this field can be filled even if the block doesn't
     // include a chunk for the shard, if a chunk at this height was received after the block was produced.
+    #[schemars(with = "String")]
     pub received_time: Option<Utc>,
     // Whether the block included a chunk for this shard
     pub chunk_included: bool,
@@ -141,7 +162,7 @@ pub struct ChunkCollection {
 // Information about things related to block/chunk production
 // at given height.
 // For debug purposes only.
-#[derive(serde::Serialize, Debug, Default)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Default)]
 pub struct ProductionAtHeight {
     // Stores information about block production is we are responsible for producing this block,
     // None if we are not responsible for producing this block.
@@ -151,15 +172,17 @@ pub struct ProductionAtHeight {
 }
 
 // Information about the approvals that we received.
-#[derive(serde::Serialize, Debug, Default, Clone)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug, Default, Clone)]
 pub struct ApprovalAtHeightStatus {
     // Map from validator id to the type of approval that they sent and timestamp.
+    #[schemars(with = "String")] // TODO fix
     pub approvals: HashMap<AccountId, (ApprovalInner, Utc)>,
     // Time at which we received 2/3 approvals (doomslug threshold).
+    #[schemars(with = "String")] // TODO fix
     pub ready_at: Option<Utc>,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, schemars::JsonSchema, Debug)]
 pub struct ValidatorStatus {
     pub validator_name: Option<AccountId>,
     // Current number of shards

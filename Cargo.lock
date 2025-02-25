@@ -4235,6 +4235,7 @@ dependencies = [
  "near-primitives",
  "near-time",
  "num-rational 0.3.2",
+ "schemars",
  "serde",
  "serde_json",
  "sha2 0.10.6",
@@ -4368,6 +4369,7 @@ dependencies = [
  "near-crypto",
  "near-primitives",
  "near-time",
+ "schemars",
  "serde",
  "serde_json",
  "strum",
@@ -4852,6 +4854,7 @@ dependencies = [
  "near-primitives-core",
  "near-schema-checker-lib",
  "num-rational 0.3.2",
+ "schemars",
  "serde",
  "serde_repr",
  "serde_yaml",
@@ -5199,6 +5202,7 @@ dependencies = [
 name = "near-time"
 version = "0.0.0"
 dependencies = [
+ "schemars",
  "serde",
  "serde_json",
  "time",

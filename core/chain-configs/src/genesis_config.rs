@@ -797,6 +797,27 @@ impl GenesisChangeConfig {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct SerializableRational32 {
+    pub numer: i32,
+    pub denom: i32,
+}
+
+impl From<Rational32> for SerializableRational32 {
+    fn from(r: Rational32) -> Self {
+        Self {
+            numer: *r.numer(),
+            denom: *r.denom(),
+        }
+    }
+}
+
+impl From<SerializableRational32> for Rational32 {
+    fn from(sr: SerializableRational32) -> Self {
+        Rational32::new(sr.numer, sr.denom)
+    }
+}
+
 // Note: this type cannot be placed in primitives/src/view.rs because of `RuntimeConfig` dependency issues.
 // Ideally we should create `RuntimeConfigView`, but given the deeply nested nature and the number of fields inside
 // `RuntimeConfig`, it should be its own endeavor.
@@ -804,11 +825,12 @@ impl GenesisChangeConfig {
 // TODO: Consider replacing tens of fields with a combination of `GenesisConfig`
 // and `EpochConfig` fields, similar to how `RuntimeConfig` is represented as a
 // separate struct and not inlined.
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct ProtocolConfigView {
     /// Current Protocol Version
     pub protocol_version: ProtocolVersion,
     /// Official time of blockchain start.
+    #[schemars(with = "String")]
     pub genesis_time: DateTime<Utc>,
     /// ID of the blockchain. This must be unique for every blockchain.
     /// If your testnet blockchains do not have unique chain IDs, you will have a bad time.
@@ -824,6 +846,7 @@ pub struct ProtocolConfigView {
     /// Enable dynamic re-sharding.
     pub dynamic_resharding: bool,
     /// Threshold of stake that needs to indicate that they ready for upgrade.
+    #[schemars(with = "SerializableRational32")]
     pub protocol_upgrade_stake_threshold: Rational32,
     /// Epoch length counted in block heights.
     pub epoch_length: BlockHeightDelta,
@@ -831,9 +854,11 @@ pub struct ProtocolConfigView {
     pub gas_limit: Gas,
     /// Minimum gas price. It is also the initial gas price.
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub min_gas_price: Balance,
     /// Maximum gas price.
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub max_gas_price: Balance,
     /// Threshold for kicking out block producers, between 0 and 100.
     pub block_producer_kickout_threshold: u8,
@@ -844,18 +869,23 @@ pub struct ProtocolConfigView {
     /// Number of target chunk validator mandates for each shard.
     pub target_validator_mandates_per_shard: NumSeats,
     /// Online minimum threshold below which validator doesn't receive reward.
+    #[schemars(with = "SerializableRational32")]
     pub online_min_threshold: Rational32,
     /// Online maximum threshold above which validator gets full reward.
+    #[schemars(with = "SerializableRational32")]
     pub online_max_threshold: Rational32,
     /// Gas price adjustment rate
+    #[schemars(with = "SerializableRational32")]
     pub gas_price_adjustment_rate: Rational32,
     /// Runtime configuration (mostly economics constants).
     pub runtime_config: RuntimeConfigView,
     /// Number of blocks for which a given transaction is valid
     pub transaction_validity_period: NumBlocks,
     /// Protocol treasury rate
+    #[schemars(with = "SerializableRational32")]
     pub protocol_reward_rate: Rational32,
     /// Maximum inflation on the total supply every epoch.
+    #[schemars(with = "SerializableRational32")]
     pub max_inflation_rate: Rational32,
     /// Expected number of blocks per year
     pub num_blocks_per_year: NumBlocks,
@@ -863,6 +893,7 @@ pub struct ProtocolConfigView {
     pub protocol_treasury_account: AccountId,
     /// Fishermen stake threshold.
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub fishermen_threshold: Balance,
     /// The minimum stake required for staking is last seat price divided by this number.
     pub minimum_stake_divisor: u64,
@@ -870,6 +901,7 @@ pub struct ProtocolConfigView {
     pub max_kickout_stake_perc: u8,
     /// The lowest ratio s/s_total any block producer can have.
     /// See <https://github.com/near/NEPs/pull/167> for details
+    #[schemars(with = "SerializableRational32")]
     pub minimum_stake_ratio: Rational32,
     /// If true, shuffle the chunk producers across shards. In other words, if
     /// the shard assignments were `[S_0, S_1, S_2, S_3]` where `S_i` represents

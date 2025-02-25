@@ -64,8 +64,10 @@ use crate::serialize;
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Eq, PartialEq, Clone)]
 pub struct AccountView {
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub amount: Balance,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub locked: Balance,
     pub code_hash: CryptoHash,
     pub storage_usage: StorageUsage,
@@ -80,10 +82,11 @@ pub struct AccountView {
 
 /// A view of the contract code.
 #[serde_as]
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq, Eq, Debug, Clone)]
 pub struct ContractCodeView {
     #[serde(rename = "code_base64")]
     #[serde_as(as = "Base64")]
+    #[schemars(with = "String")]
     pub code: Vec<u8>,
     pub hash: CryptoHash,
 }
@@ -224,6 +227,7 @@ pub struct ViewStateResult {
     pub values: Vec<StateItem>,
     #[serde_as(as = "Vec<Base64>")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(with = "String")] // TODO: check if empty
     pub proof: Vec<Arc<[u8]>>,
 }
 
@@ -297,7 +301,7 @@ pub enum QueryResponseKind {
     AccessKeyList(AccessKeyList),
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "request_type", rename_all = "snake_case")]
 pub enum QueryRequest {
     ViewAccount {
@@ -345,11 +349,13 @@ pub struct StatusSyncInfo {
     pub latest_block_height: BlockHeight,
     pub latest_state_root: CryptoHash,
     #[serde(with = "near_time::serde_utc_as_iso")]
+    #[schemars(with = "String")]
     pub latest_block_time: Utc,
     pub syncing: bool,
     pub earliest_block_hash: Option<CryptoHash>,
     pub earliest_block_height: Option<BlockHeight>,
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub earliest_block_time: Option<Utc>,
     pub epoch_id: Option<EpochId>,
     pub epoch_start_height: Option<BlockHeight>,
@@ -403,6 +409,7 @@ pub struct AccountDataView {
     pub proxies: Vec<Tier1ProxyView>,
     pub account_key: PublicKey,
     #[serde(with = "near_time::serde_utc_as_iso")]
+    #[schemars(with = "String")]
     pub timestamp: Utc,
 }
 
@@ -596,6 +603,7 @@ pub struct BlockProcessingInfo {
     pub height: BlockHeight,
     pub hash: CryptoHash,
     #[serde(with = "near_time::serde_utc_as_iso")]
+    #[schemars(with = "String")]
     pub received_timestamp: Utc,
     /// Time (in ms) between when the block was first received and when it was processed
     pub in_progress_ms: u128,
@@ -664,9 +672,11 @@ pub struct ChunkProcessingInfo {
     pub status: ChunkProcessingStatus,
     /// Timestamp of first time when we request for this chunk.
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub requested_timestamp: Option<Utc>,
     /// Timestamp of when the chunk is complete
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub completed_timestamp: Option<Utc>,
     /// Time (in millis) that it takes between when the chunk is requested and when it is completed.
     pub request_duration: Option<u64>,
@@ -678,12 +688,15 @@ pub struct PartCollectionInfo {
     pub part_owner: AccountId,
     // Time when the part is received through any message
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub received_time: Option<Utc>,
     // Time when we receive a PartialEncodedChunkForward containing this part
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub forwarded_received_time: Option<Utc>,
     // Time when we receive the PartialEncodedChunk message containing this part
     #[serde(with = "near_time::serde_opt_utc_as_iso")]
+    #[schemars(with = "String")]
     pub chunk_received_time: Option<Utc>,
 }
 
@@ -899,6 +912,7 @@ pub struct BlockHeaderInnerLiteView {
     /// Legacy json number. Should not be used.
     pub timestamp: u64,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub timestamp_nanosec: u64,
     pub next_bp_hash: CryptoHash,
     pub block_merkle_root: CryptoHash,
@@ -2135,6 +2149,7 @@ pub struct EpochValidatorInfo {
     Clone,
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     ProtocolSchema,
 )]
 pub struct ValidatorKickoutView {
@@ -2148,6 +2163,7 @@ pub struct CurrentEpochValidatorInfo {
     pub public_key: PublicKey,
     pub is_slashed: bool,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub stake: Balance,
     /// Shards this validator is assigned to as chunk producer in the current epoch.
     #[serde(rename = "shards")]
@@ -2195,6 +2211,7 @@ pub struct NextEpochValidatorInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub stake: Balance,
     pub shards: Vec<ShardId>,
 }
@@ -2251,6 +2268,7 @@ impl LightClientBlockLiteView {
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
 pub struct GasPriceView {
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub gas_price: Balance,
 }
 
@@ -2416,6 +2434,7 @@ pub enum StateChangeValueView {
         account_id: AccountId,
         #[serde(rename = "code_base64")]
         #[serde_as(as = "Base64")]
+        #[schemars(with = "String")]
         code: Vec<u8>,
     },
     ContractCodeDeletion {

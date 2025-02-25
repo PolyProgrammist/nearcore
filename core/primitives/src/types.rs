@@ -14,7 +14,7 @@ use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use schemars::JsonSchema;
+use schemars;
 
 mod chunk_validator_stats;
 
@@ -33,7 +33,7 @@ pub(crate) type SignatureDifferentiator = String;
 
 /// Different types of finality.
 #[derive(
-    serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq, Eq, arbitrary::Arbitrary,
+    serde::Serialize, serde::Deserialize, schemars::JsonSchema, Default, Clone, Debug, PartialEq, Eq, arbitrary::Arbitrary,
 )]
 pub enum Finality {
     #[serde(rename = "optimistic")]
@@ -45,7 +45,7 @@ pub enum Finality {
     Final,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct AccountWithPublicKey {
     pub account_id: AccountId,
     pub public_key: PublicKey,
@@ -68,6 +68,7 @@ pub struct AccountInfo {
 #[derive(
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
@@ -79,7 +80,7 @@ pub struct AccountInfo {
     BorshDeserialize,
 )]
 #[serde(transparent)]
-pub struct StoreKey(#[serde_as(as = "Base64")] Vec<u8>);
+pub struct StoreKey(#[serde_as(as = "Base64")] #[schemars(with = "String")] Vec<u8>);
 
 /// This type is used to mark values returned from store (arrays of bytes).
 ///
@@ -89,6 +90,7 @@ pub struct StoreKey(#[serde_as(as = "Base64")] Vec<u8>);
 #[derive(
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
@@ -100,7 +102,7 @@ pub struct StoreKey(#[serde_as(as = "Base64")] Vec<u8>);
     BorshDeserialize,
 )]
 #[serde(transparent)]
-pub struct StoreValue(#[serde_as(as = "Base64")] Vec<u8>);
+pub struct StoreValue(#[serde_as(as = "Base64")] #[schemars(with = "String")] Vec<u8>);
 
 /// This type is used to mark function arguments.
 ///
@@ -111,6 +113,7 @@ pub struct StoreValue(#[serde_as(as = "Base64")] Vec<u8>);
 #[derive(
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
@@ -120,7 +123,6 @@ pub struct StoreValue(#[serde_as(as = "Base64")] Vec<u8>);
     derive_more::Into,
     BorshSerialize,
     BorshDeserialize,
-    JsonSchema,
 )]
 #[serde(transparent)]
 pub struct FunctionArgs(#[serde_as(as = "Base64")] #[schemars(with = "String")] Vec<u8>);
@@ -485,6 +487,7 @@ impl StateRootNode {
     BorshDeserialize,
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     arbitrary::Arbitrary,
     ProtocolSchema,
 )]
@@ -1009,7 +1012,7 @@ pub struct ChunkExtraV1 {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, arbitrary::Arbitrary,
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema, arbitrary::Arbitrary,
 )]
 #[serde(untagged)]
 pub enum BlockId {
@@ -1020,7 +1023,7 @@ pub enum BlockId {
 pub type MaybeBlockId = Option<BlockId>;
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, arbitrary::Arbitrary,
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema, arbitrary::Arbitrary,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SyncCheckpoint {
@@ -1029,7 +1032,7 @@ pub enum SyncCheckpoint {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, arbitrary::Arbitrary,
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema, arbitrary::Arbitrary,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum BlockReference {
@@ -1086,7 +1089,7 @@ pub struct BlockChunkValidatorStats {
     pub chunk_stats: ChunkStats,
 }
 
-#[derive(serde::Deserialize, Debug, arbitrary::Arbitrary, PartialEq, Eq)]
+#[derive(serde::Deserialize, schemars::JsonSchema, Debug, arbitrary::Arbitrary, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EpochReference {
     EpochId(EpochId),
@@ -1131,6 +1134,7 @@ pub enum ValidatorInfoIdentifier {
     BorshDeserialize,
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
@@ -1149,8 +1153,10 @@ pub enum ValidatorKickoutReason {
     /// Validator stake is now below threshold
     NotEnoughStake {
         #[serde(with = "dec_format", rename = "stake_u128")]
+        #[schemars(with = "String")]
         stake: Balance,
         #[serde(with = "dec_format", rename = "threshold_u128")]
+        #[schemars(with = "String")]
         threshold: Balance,
     },
     /// Enough stake but is not chosen because of seat limits.
@@ -1159,7 +1165,7 @@ pub enum ValidatorKickoutReason {
     NotEnoughChunkEndorsements { produced: NumBlocks, expected: NumBlocks },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransactionOrReceiptId {
     Transaction { transaction_hash: CryptoHash, sender_id: AccountId },

@@ -16,7 +16,7 @@ use near_client::{
     GetReceipt, GetStateChanges, GetStateChangesInBlock, GetValidatorInfo, GetValidatorOrdered,
     ProcessTxRequest, ProcessTxResponse, Query, Status, TxStatus,
 };
-use near_client_primitives::debug::{DebugBlockStatusQuery, DebugBlocksStartingMode};
+use near_client_primitives::debug::{DebugBlockStatusQuery, DebugBlocksStartingMode, EpochInfoView};
 use near_client_primitives::types::GetSplitStorageInfo;
 pub use near_jsonrpc_client as client;
 pub use near_jsonrpc_primitives as primitives;
@@ -309,7 +309,7 @@ impl JsonRpcHandler {
     // `process_request_internal`.
     async fn process_request(&self, request: Request) -> Result<Value, RpcError> {
 
-        let schema = schema_for!(        RpcBlockResponse       );
+        let schema = schema_for!(        EpochInfoView       );
         let json_schema = serde_json::to_string_pretty(&schema).unwrap();
         let mut file = File::create("output.txt"); // Overwrites if file exists
         if let Ok(mut thefile) = file {
