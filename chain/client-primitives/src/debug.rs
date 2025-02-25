@@ -42,14 +42,26 @@ pub struct EpochInfoView {
     pub shards_size_and_parts: Vec<(u64, u64, bool)>,
 }
 
-fn cryptohash_utc_tuple_option_schema(_gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+fn cryptohash_utc_tuple_option_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
     schemars::schema::Schema::Object(schemars::schema::SchemaObject {
-        instance_type: Some(schemars::schema::InstanceType::Array.into()),
-        array: Some(Box::new(schemars::schema::ArrayValidation {
-            items: Some(schemars::schema::SingleOrVec::Vec(vec![
-                _gen.subschema_for::<CryptoHash>(),
-                _gen.subschema_for::<String>(),
-            ])),
+        subschemas: Some(Box::new(schemars::schema::SubschemaValidation {
+            one_of: Some(vec![
+                schemars::schema::Schema::Object(schemars::schema::SchemaObject {
+                    instance_type: Some(schemars::schema::InstanceType::Null.into()),
+                    ..Default::default()
+                }),
+                schemars::schema::Schema::Object(schemars::schema::SchemaObject {
+                    instance_type: Some(schemars::schema::InstanceType::Array.into()),
+                    array: Some(Box::new(schemars::schema::ArrayValidation {
+                        items: Some(schemars::schema::SingleOrVec::Vec(vec![
+                            gen.subschema_for::<CryptoHash>(),
+                            gen.subschema_for::<String>(),
+                        ])),
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                }),
+            ]),
             ..Default::default()
         })),
         ..Default::default()
