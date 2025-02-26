@@ -52,11 +52,12 @@ pub struct AccountWithPublicKey {
 }
 
 /// Account info for validators
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, Eq, PartialEq)]
 pub struct AccountInfo {
     pub account_id: AccountId,
     pub public_key: PublicKey,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     pub amount: Balance,
 }
 

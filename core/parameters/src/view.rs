@@ -3,6 +3,7 @@ use crate::{ActionCosts, ExtCosts, Fee, ParameterCost};
 use near_account_id::AccountId;
 use near_primitives_core::serialize::dec_format;
 use near_primitives_core::types::{Balance, Gas};
+use near_primitives_core::config::Rational32SchemaProvider;
 use num_rational::Rational32;
 
 /// View that preserves JSON format of the runtime config.
@@ -26,29 +27,6 @@ pub struct RuntimeConfigView {
     pub witness_config: WitnessConfigView,
 }
 
-
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub struct SerializableRational32 {
-    pub numer: i32,
-    pub denom: i32,
-}
-
-impl From<Rational32> for SerializableRational32 {
-    fn from(r: Rational32) -> Self {
-        Self {
-            numer: *r.numer(),
-            denom: *r.denom(),
-        }
-    }
-}
-
-impl From<SerializableRational32> for Rational32 {
-    fn from(sr: SerializableRational32) -> Self {
-        Rational32::new(sr.numer, sr.denom)
-    }
-}
-
-
 #[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone)]
 pub struct RuntimeFeesConfigView {
     /// Describes the cost of creating an action receipt, `ActionReceipt`, excluding the actual cost
@@ -65,11 +43,11 @@ pub struct RuntimeFeesConfigView {
     pub storage_usage_config: StorageUsageConfigView,
 
     /// Fraction of the burnt gas to reward to the contract account for execution.
-    #[schemars(with = "SerializableRational32")]
+    #[schemars(with = "Rational32SchemaProvider")]
     pub burnt_gas_reward: Rational32,
 
     /// Pessimistic gas price inflation ratio.
-    #[schemars(with = "SerializableRational32")]
+    #[schemars(with = "Rational32SchemaProvider")]
     pub pessimistic_gas_price_inflation_ratio: Rational32,
 }
 
