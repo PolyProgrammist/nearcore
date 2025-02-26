@@ -245,7 +245,7 @@ pub enum InvalidTxError {
         /// The congested shard.
         shard_id: u32,
         /// A value between 0 (no congestion) and 1 (max congestion).
-        #[schemars(with = "f64")] // TODO: think if it's good
+        #[schemars(with = "f64")]
         congestion_level: ordered_float::NotNan<f64>,
     },
     /// The receiver shard of the transaction missed several chunks and rejects

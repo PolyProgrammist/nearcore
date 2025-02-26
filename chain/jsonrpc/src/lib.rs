@@ -308,7 +308,7 @@ impl JsonRpcHandler {
     // `process_request` increments affected metrics but the request processing is done by
     // `process_request_internal`.
     async fn process_request(&self, request: Request) -> Result<Value, RpcError> {
-        let schema = schema_for!(        RpcTransactionResponse       );
+        let schema = schema_for!(        near_jsonrpc_primitives::types::query::RpcQueryResponse       );
         let json_schema = serde_json::to_string_pretty(&schema).unwrap();
         let mut file = File::create("output.txt"); // Overwrites if file exists
         if let Ok(mut thefile) = file {

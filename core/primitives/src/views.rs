@@ -227,7 +227,7 @@ pub struct ViewStateResult {
     pub values: Vec<StateItem>,
     #[serde_as(as = "Vec<Base64>")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(with = "String")] // TODO: check if empty
+    #[schemars(with = "String")]
     pub proof: Vec<Arc<[u8]>>,
 }
 
