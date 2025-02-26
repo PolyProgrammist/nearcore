@@ -59,7 +59,6 @@ use std::ops::Range;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use validator_stake_view::ValidatorStakeView;
-use crate::serialize;
 /// A view of the account
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug, Eq, PartialEq, Clone)]
 pub struct AccountView {
@@ -1856,7 +1855,6 @@ pub mod validator_stake_view {
     use borsh::{BorshDeserialize, BorshSerialize};
     use near_primitives_core::types::AccountId;
     use serde::Deserialize;
-    use schemars::JsonSchema;
 
     #[derive(
         BorshSerialize, BorshDeserialize, serde::Serialize, Deserialize, schemars::JsonSchema, Debug, Clone, Eq, PartialEq

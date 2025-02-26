@@ -30,7 +30,7 @@ near-o11y = { workspace = true, optional = true }
 near-parameters.workspace = true
 near-primitives.workspace = true
 near-config-utils.workspace = true
-schemars = "0.8.21"
+schemars = { version = "0.8.21", features = ["chrono"] }
 
 [features]
 nightly_protocol = [

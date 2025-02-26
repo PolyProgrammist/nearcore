@@ -22,6 +22,7 @@ use schemars::JsonSchema;
     Default,
     serde::Serialize,
     serde::Deserialize,
+    schemars::JsonSchema,
     ProtocolSchema,
 )]
 pub enum AccountVersion {
@@ -288,11 +289,13 @@ impl Account {
 
 /// Account representation for serde ser/deser that maintains both backward
 /// and forward compatibility.
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone, ProtocolSchema)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq, Eq, Debug, Clone, ProtocolSchema)]
 struct SerdeAccount {
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     amount: Balance,
     #[serde(with = "dec_format")]
+    #[schemars(with = "String")]
     locked: Balance,
     code_hash: CryptoHash,
     storage_usage: StorageUsage,
@@ -372,6 +375,16 @@ impl serde::Serialize for Account {
             global_contract_account_id: self.global_contract_account_id().cloned(),
         };
         repr.serialize(serializer)
+    }
+}
+
+impl schemars::JsonSchema for Account {
+    fn schema_name() -> String {
+        "Account".to_string()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        SerdeAccount::json_schema(gen)
     }
 }
 

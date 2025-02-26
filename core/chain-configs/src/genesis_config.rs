@@ -116,7 +116,6 @@ pub struct GenesisConfig {
     pub protocol_version: ProtocolVersion,
     /// Official time of blockchain start.
     #[default(default_genesis_time())]
-    #[schemars(with = "String")]
     pub genesis_time: DateTime<Utc>,
     /// ID of the blockchain. This must be unique for every blockchain.
     /// If your testnet blockchains do not have unique chain IDs, you will have a bad time.
@@ -822,7 +821,6 @@ pub struct ProtocolConfigView {
     /// Current Protocol Version
     pub protocol_version: ProtocolVersion,
     /// Official time of blockchain start.
-    #[schemars(with = "String")]
     pub genesis_time: DateTime<Utc>,
     /// ID of the blockchain. This must be unique for every blockchain.
     /// If your testnet blockchains do not have unique chain IDs, you will have a bad time.

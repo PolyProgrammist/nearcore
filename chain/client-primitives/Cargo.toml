@@ -20,7 +20,7 @@ strum.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tracing.workspace = true
-schemars = "0.8.21"
+schemars = { version = "0.8.21", features = ["chrono"] }
 
 near-time.workspace = true
 near-chain-primitives.workspace = true
