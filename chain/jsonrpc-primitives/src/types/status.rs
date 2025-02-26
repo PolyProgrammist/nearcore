@@ -18,7 +18,7 @@ pub struct RpcStatusResponse {
 }
 
 #[cfg(feature = "debug_types")]
-#[derive(serde::Serialize, schemars::JsonSchema, Debug)]
+#[derive(serde::Serialize, Debug)]
 pub enum DebugStatusResponse {
     SyncStatus(SyncStatusView),
     CatchupStatus(Vec<CatchupStatusView>),
@@ -41,7 +41,7 @@ pub enum DebugStatusResponse {
 }
 
 #[cfg(feature = "debug_types")]
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize)]
 pub struct RpcDebugStatusResponse {
     pub status_response: DebugStatusResponse,
 }
