@@ -4371,7 +4371,6 @@ dependencies = [
  "near-crypto",
  "near-primitives",
  "near-time",
- "schemars",
  "serde",
  "serde_json",
  "strum",
