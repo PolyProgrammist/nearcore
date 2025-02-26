@@ -16,7 +16,7 @@ use near_client::{
     GetReceipt, GetStateChanges, GetStateChangesInBlock, GetValidatorInfo, GetValidatorOrdered,
     ProcessTxRequest, ProcessTxResponse, Query, Status, TxStatus,
 };
-use near_client_primitives::debug::{ChunkProduction, DebugBlockStatusQuery, DebugBlocksStartingMode, EpochInfoView};
+use near_client_primitives::debug::{DebugBlockStatusQuery, DebugBlocksStartingMode};
 use near_client_primitives::types::GetSplitStorageInfo;
 pub use near_jsonrpc_client as client;
 pub use near_jsonrpc_primitives as primitives;
@@ -32,7 +32,6 @@ use near_jsonrpc_primitives::types::split_storage::{
 use near_jsonrpc_primitives::types::transactions::{
     RpcSendTransactionRequest, RpcTransactionResponse
 };
-use near_jsonrpc_primitives::types::blocks::RpcBlockResponse;
 use near_network::debug::GetDebugStatus;
 use near_network::tcp::{self, ListenerAddr};
 use near_o11y::metrics::{prometheus, Encoder, TextEncoder};
@@ -310,9 +309,9 @@ impl JsonRpcHandler {
     async fn process_request(&self, request: Request) -> Result<Value, RpcError> {
         let schema = schema_for!(        near_jsonrpc_primitives::types::query::RpcQueryResponse       );
         let json_schema = serde_json::to_string_pretty(&schema).unwrap();
-        let mut file = File::create("output.txt"); // Overwrites if file exists
+        let file = File::create("output.txt"); // Overwrites if file exists
         if let Ok(mut thefile) = file {
-            thefile.write_all(        format!("{}", json_schema).as_bytes()    ); // Writing bytes
+            let _ = thefile.write_all(        format!("{}", json_schema).as_bytes()    ); // Writing bytes
         }
 
         let timer = Instant::now();

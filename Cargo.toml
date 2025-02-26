@@ -218,6 +218,7 @@ near-account-id = { path = "../near-account-id-rs", features = [
     "internal_unstable",
     "serde",
     "borsh",
+    "schemars",
 ] }
 near-actix-test-utils = { path = "test-utils/actix-test-utils" }
 near-amend-genesis = { path = "tools/amend-genesis" }
