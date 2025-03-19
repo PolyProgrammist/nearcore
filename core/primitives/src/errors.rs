@@ -115,6 +115,23 @@ impl MissingTrieValueContext {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    serde::Serialize,
+    BorshSerialize,
+    BorshDeserialize,
+    ProtocolSchema,
+    JsonSchema,
+)]
+pub struct MissingTrieValue {
+    pub context: MissingTrieValueContext, 
+    pub hash: CryptoHash
+}
+
 /// Errors which may occur during working with trie storages, storing
 /// trie values (trie nodes and state values) by their hashes.
 #[derive(
@@ -133,7 +150,7 @@ pub enum StorageError {
     /// Key-value db internal failure
     StorageInternalError,
     /// Requested trie value by its hash which is missing in storage.
-    MissingTrieValue(MissingTrieValueContext, CryptoHash),
+    MissingTrieValue(MissingTrieValue),
     /// Found trie node which shouldn't be part of state. Raised during
     /// validation of state sync parts where incorrect node was passed.
     /// TODO (#8997): consider including hash of trie node.

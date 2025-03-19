@@ -27,7 +27,7 @@ use near_fmt::{AbbrBytes, StorageKey};
 use near_primitives::account::{AccessKey, Account};
 use near_primitives::bandwidth_scheduler::BandwidthSchedulerState;
 use near_primitives::congestion_info::CongestionInfo;
-pub use near_primitives::errors::{MissingTrieValueContext, StorageError};
+pub use near_primitives::errors::{MissingTrieValueContext, StorageError, MissingTrieValue};
 use near_primitives::hash::CryptoHash;
 use near_primitives::receipt::{
     BufferedReceiptIndices, DelayedReceiptIndices, PromiseYieldIndices, PromiseYieldTimeout,
