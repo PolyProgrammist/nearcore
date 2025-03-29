@@ -375,7 +375,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/JsonRpcResponse_for_RpcBlockResponse_and_RpcError"
+                                    "$ref": "#/components/schemas/JsonRpcResponse_for_CryptoHash_and_RpcError"
                                 }
                             }
                         }
@@ -510,7 +510,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/JsonRpcResponse_for_RpcHealthResponse_and_RpcError"
+                                    "$ref": "#/components/schemas/JsonRpcResponse_for_Nullable_RpcHealthResponse_and_RpcError"
                                 }
                             }
                         }
@@ -6979,6 +6979,57 @@
                     }
                 }
             },
+            "JsonRpcResponse_for_CryptoHash_and_RpcError": {
+                "title": "JsonRpcResponse_for_CryptoHash_and_RpcError",
+                "type": "object",
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "required": [
+                            "result"
+                        ],
+                        "properties": {
+                            "result": {
+                                "$ref": "#/components/schemas/CryptoHash"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "tmp"
+                        ],
+                        "properties": {
+                            "tmp": {
+                                "$ref": "#/components/schemas/RpcError"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "error"
+                        ],
+                        "properties": {
+                            "error": {
+                                "$ref": "#/components/schemas/RpcError"
+                            }
+                        }
+                    }
+                ],
+                "required": [
+                    "id",
+                    "jsonrpc"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "jsonrpc": {
+                        "type": "string"
+                    }
+                }
+            },
             "JsonRpcResponse_for_GenesisConfig_and_RpcError": {
                 "title": "JsonRpcResponse_for_GenesisConfig_and_RpcError",
                 "type": "object",
@@ -6991,6 +7042,59 @@
                         "properties": {
                             "result": {
                                 "$ref": "#/components/schemas/GenesisConfig"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "tmp"
+                        ],
+                        "properties": {
+                            "tmp": {
+                                "$ref": "#/components/schemas/RpcError"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "error"
+                        ],
+                        "properties": {
+                            "error": {
+                                "$ref": "#/components/schemas/RpcError"
+                            }
+                        }
+                    }
+                ],
+                "required": [
+                    "id",
+                    "jsonrpc"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "jsonrpc": {
+                        "type": "string"
+                    }
+                }
+            },
+            "JsonRpcResponse_for_Nullable_RpcHealthResponse_and_RpcError": {
+                "title": "JsonRpcResponse_for_Nullable_RpcHealthResponse_and_RpcError",
+                "type": "object",
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "result": {
+                                "allOf": [
+                                    {
+                                        "$ref": "#/components/schemas/RpcHealthResponse"
+                                    }
+                                ],
+                                "nullable": true
                             }
                         }
                     },
@@ -7246,57 +7350,6 @@
                         "properties": {
                             "result": {
                                 "$ref": "#/components/schemas/RpcGasPriceResponse"
-                            }
-                        }
-                    },
-                    {
-                        "type": "object",
-                        "required": [
-                            "tmp"
-                        ],
-                        "properties": {
-                            "tmp": {
-                                "$ref": "#/components/schemas/RpcError"
-                            }
-                        }
-                    },
-                    {
-                        "type": "object",
-                        "required": [
-                            "error"
-                        ],
-                        "properties": {
-                            "error": {
-                                "$ref": "#/components/schemas/RpcError"
-                            }
-                        }
-                    }
-                ],
-                "required": [
-                    "id",
-                    "jsonrpc"
-                ],
-                "properties": {
-                    "id": {
-                        "type": "string"
-                    },
-                    "jsonrpc": {
-                        "type": "string"
-                    }
-                }
-            },
-            "JsonRpcResponse_for_RpcHealthResponse_and_RpcError": {
-                "title": "JsonRpcResponse_for_RpcHealthResponse_and_RpcError",
-                "type": "object",
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "required": [
-                            "result"
-                        ],
-                        "properties": {
-                            "result": {
-                                "$ref": "#/components/schemas/RpcHealthResponse"
                             }
                         }
                     },
@@ -9573,13 +9626,12 @@
             },
             "RpcLightClientExecutionProofRequest": {
                 "type": "object",
-                "oneOf": [
+                "anyOf": [
                     {
                         "type": "object",
                         "required": [
                             "sender_id",
-                            "transaction_hash",
-                            "type"
+                            "transaction_hash"
                         ],
                         "properties": {
                             "sender_id": {
@@ -9587,12 +9639,6 @@
                             },
                             "transaction_hash": {
                                 "$ref": "#/components/schemas/CryptoHash"
-                            },
-                            "type": {
-                                "type": "string",
-                                "enum": [
-                                    "transaction"
-                                ]
                             }
                         }
                     },
@@ -9600,8 +9646,7 @@
                         "type": "object",
                         "required": [
                             "receipt_id",
-                            "receiver_id",
-                            "type"
+                            "receiver_id"
                         ],
                         "properties": {
                             "receipt_id": {
@@ -9609,22 +9654,20 @@
                             },
                             "receiver_id": {
                                 "$ref": "#/components/schemas/AccountId"
-                            },
-                            "type": {
-                                "type": "string",
-                                "enum": [
-                                    "receipt"
-                                ]
                             }
                         }
                     }
                 ],
                 "required": [
-                    "light_client_head"
+                    "light_client_head",
+                    "type"
                 ],
                 "properties": {
                     "light_client_head": {
                         "$ref": "#/components/schemas/CryptoHash"
+                    },
+                    "type": {
+                        "$ref": "#/components/schemas/TypeTransactionOrReceiptId"
                     }
                 }
             },
@@ -11933,6 +11976,13 @@
                 "type": "string",
                 "enum": [
                     "tx"
+                ]
+            },
+            "TypeTransactionOrReceiptId": {
+                "type": "string",
+                "enum": [
+                    "transaction",
+                    "receipt"
                 ]
             },
             "UseGlobalContractAction": {
