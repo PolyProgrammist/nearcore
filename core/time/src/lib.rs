@@ -61,21 +61,21 @@ impl From<Instant> for Deadline {
 
 #[derive(schemars::JsonSchema)]
 pub struct DurationSchemeProvider {
-    pub seconds: i64,
-    pub nanoseconds: i32,
+    pub secs: i64,
+    pub nanos: i32,
 }
 
 impl From<Duration> for DurationSchemeProvider {
     fn from(duration: Duration) -> Self {
         Self {
-            seconds: duration.whole_seconds(),
-            nanoseconds: duration.subsec_nanoseconds(),
+            secs: duration.whole_seconds(),
+            nanos: duration.subsec_nanoseconds(),
         }
     }
 }
 
 impl From<DurationSchemeProvider> for Duration {
     fn from(serializable: DurationSchemeProvider) -> Self {
-        Duration::new(serializable.seconds, serializable.nanoseconds)
+        Duration::new(serializable.secs, serializable.nanos)
     }
 }

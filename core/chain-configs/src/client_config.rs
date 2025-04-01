@@ -446,56 +446,56 @@ pub struct ClientConfig {
     /// Graceful shutdown at expected block height.
     pub expected_shutdown: MutableConfigValue<Option<BlockHeight>>,
     /// Duration to check for producing / skipping block.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub block_production_tracking_delay: Duration,
     /// Minimum duration before producing block.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub min_block_production_delay: Duration,
     /// Maximum wait for approvals before producing block.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub max_block_production_delay: Duration,
     /// Maximum duration before skipping given height.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub max_block_wait_delay: Duration,
     /// Skip waiting for sync (for testing or single node testnet).
     pub skip_sync_wait: bool,
     /// How often to check that we are not out of sync.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub sync_check_period: Duration,
     /// While syncing, how long to check for each step.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub sync_step_period: Duration,
     /// Sync height threshold: below this difference in height don't start syncing.
     pub sync_height_threshold: BlockHeightDelta,
     /// Maximum number of block requests to send to peers to sync
     pub sync_max_block_requests: usize,
     /// How much time to wait after initial header sync
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub header_sync_initial_timeout: Duration,
     /// How much time to wait after some progress is made in header sync
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub header_sync_progress_timeout: Duration,
     /// How much time to wait before banning a peer in header sync if sync is too slow
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub header_sync_stall_ban_timeout: Duration,
     /// Expected increase of header head height per second during header sync
     pub header_sync_expected_height_per_second: u64,
     /// How long to wait for a response from centralized state sync
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub state_sync_external_timeout: Duration,
     /// How long to wait for a response from p2p state sync
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub state_sync_p2p_timeout: Duration,
     /// How long to wait after a failed state sync request
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub state_sync_retry_backoff: Duration,
     /// Additional waiting period after a failed request to external storage
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub state_sync_external_backoff: Duration,
     /// Minimum number of peers to start syncing.
     pub min_num_peers: usize,
     /// Period between logging summary information.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub log_summary_period: Duration,
     /// Enable coloring of the logs
     pub log_summary_style: LogSummaryStyle,
@@ -506,18 +506,18 @@ pub struct ClientConfig {
     /// Number of block producer seats
     pub num_block_producer_seats: NumSeats,
     /// Time to persist Accounts Id in the router without removing them.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub ttl_account_id_router: Duration,
     /// Horizon at which instead of fetching block, fetch full state.
     pub block_fetch_horizon: BlockHeightDelta,
     /// Time between check to perform catchup.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub catchup_step_period: Duration,
     /// Time between checking to re-request chunks.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub chunk_request_retry_period: Duration,
     /// Time between running doomslug timer.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub doomslug_step_period: Duration,
     /// Behind this horizon header fetch kicks in.
     pub block_header_fetch_horizon: BlockHeightDelta,
@@ -543,7 +543,7 @@ pub struct ClientConfig {
     /// Number of threads for ViewClientActor pool.
     pub view_client_threads: usize,
     /// Number of seconds between state requests for view client.
-    #[schemars(with = "String")]
+    #[schemars(with = "[u64;2]")]
     pub view_client_throttle_period: Duration,
     /// Upper bound of the byte size of contract state that is still viewable. None is no limit
     pub trie_viewer_state_size_limit: Option<u64>,
@@ -591,7 +591,7 @@ pub struct ClientConfig {
     ///
     /// We keep only orphan witnesses which are smaller than this size.
     /// This limits the maximum memory usage of OrphanStateWitnessPool.
-    #[schemars(with = "String")]
+    #[schemars(with = "u64")]
     pub orphan_state_witness_max_size: ByteSize,
     /// Save observed instances of ChunkStateWitness to the database in DBCol::LatestChunkStateWitnesses.
     /// Saving the latest witnesses is useful for analysis and debugging.
