@@ -107,11 +107,11 @@ impl CryptoHash {
 }
 
 impl JsonSchema for CryptoHash {
-    fn schema_name() -> String {
-        "CryptoHash".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "CryptoHash".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
         String::json_schema(gen)
     }
 }

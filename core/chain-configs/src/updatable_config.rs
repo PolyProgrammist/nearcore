@@ -42,11 +42,11 @@ impl<T: Serialize> Serialize for MutableConfigValue<T> {
 }
 
 impl<T: schemars::JsonSchema> schemars::JsonSchema for MutableConfigValue<T> {
-    fn schema_name() -> String {
-        "MutableConfigValue".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "MutableConfigValue".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
         String::json_schema(gen)
     }
 }

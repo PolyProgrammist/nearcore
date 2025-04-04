@@ -308,11 +308,11 @@ impl<'de> serde::Deserialize<'de> for ShardLayoutV2 {
 }
 
 impl schemars::JsonSchema for ShardLayoutV2 {
-    fn schema_name() -> String {
-        "ShardLayoutV2".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ShardLayoutV2".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
         SerdeShardLayoutV2::json_schema(gen)
     }
 }

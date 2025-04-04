@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::str::FromStr;
 use std::sync::LazyLock;
-use schemars::{schema::Schema, gen::SchemaGenerator, JsonSchema};
+use schemars::{Schema, gen::SchemaGenerator, JsonSchema};
 use schemars;
 
 pub static SECP256K1: LazyLock<secp256k1::Secp256k1<secp256k1::All>> =
@@ -275,11 +275,11 @@ impl FromStr for PublicKey {
 }
 
 impl JsonSchema for PublicKey {
-    fn schema_name() -> String {
-        "PublicKey".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "PublicKey".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
         String::json_schema(gen)
     }
 }
@@ -720,8 +720,8 @@ impl<'de> serde::Deserialize<'de> for Signature {
 }
 
 impl JsonSchema for Signature {
-    fn schema_name() -> String {
-        "Signature".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Signature".to_string().into()
     }
 
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {

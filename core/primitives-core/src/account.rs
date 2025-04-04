@@ -379,11 +379,11 @@ impl serde::Serialize for Account {
 }
 
 impl schemars::JsonSchema for Account {
-    fn schema_name() -> String {
-        "Account".to_string()
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Account".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
         SerdeAccount::json_schema(gen)
     }
 }
