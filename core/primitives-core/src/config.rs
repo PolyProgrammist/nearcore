@@ -44,24 +44,3 @@ pub struct ViewConfig {
     /// If specified, defines max burnt gas per view method.
     pub max_gas_burnt: Gas,
 }
-
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub struct Rational32SchemaProvider {
-    pub numer: i32,
-    pub denom: i32,
-}
-
-impl From<Rational32> for Rational32SchemaProvider {
-    fn from(r: Rational32) -> Self {
-        Self {
-            numer: *r.numer(),
-            denom: *r.denom(),
-        }
-    }
-}
-
-impl From<Rational32SchemaProvider> for Rational32 {
-    fn from(sr: Rational32SchemaProvider) -> Self {
-        Rational32::new(sr.numer, sr.denom)
-    }
-}

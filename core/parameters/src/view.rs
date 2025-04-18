@@ -3,7 +3,6 @@ use crate::{ActionCosts, ExtCosts, Fee, ParameterCost};
 use near_account_id::AccountId;
 use near_primitives_core::serialize::dec_format;
 use near_primitives_core::types::{Balance, Gas};
-use near_primitives_core::config::Rational32SchemaProvider;
 use num_rational::Rational32;
 
 /// View that preserves JSON format of the runtime config.
@@ -43,11 +42,11 @@ pub struct RuntimeFeesConfigView {
     pub storage_usage_config: StorageUsageConfigView,
 
     /// Fraction of the burnt gas to reward to the contract account for execution.
-    #[schemars(with = "Rational32SchemaProvider")]
+    #[schemars(with = "[i32; 2]")]
     pub burnt_gas_reward: Rational32,
 
     /// Pessimistic gas price inflation ratio.
-    #[schemars(with = "Rational32SchemaProvider")]
+    #[schemars(with = "[i32; 2]")]
     pub pessimistic_gas_price_inflation_ratio: Rational32,
 }
 
