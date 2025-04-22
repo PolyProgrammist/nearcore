@@ -317,13 +317,13 @@ pub enum StateChangeValueViewContent {
     },
     AccessKeyUpdate {
         account_id: near_primitives::types::AccountId,
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         public_key: near_crypto::PublicKey,
         access_key: near_primitives::views::AccessKeyView,
     },
     AccessKeyDeletion {
         account_id: near_primitives::types::AccountId,
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         public_key: near_crypto::PublicKey,
     },
     DataUpdate {
@@ -342,7 +342,7 @@ pub enum StateChangeValueViewContent {
         account_id: near_primitives::types::AccountId,
         #[serde(rename = "code_base64")]
         #[serde_as(as = "Base64")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         code: Vec<u8>,
     },
     ContractCodeDeletion {
@@ -369,7 +369,8 @@ pub enum NameRpcErrorKind {
 }
 
 #[cfg(feature = "progenitor")]
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum TypeTransactionOrReceiptId {
     Transaction,
@@ -377,7 +378,8 @@ pub enum TypeTransactionOrReceiptId {
 }
 
 #[cfg(feature = "progenitor")]
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum TransactionOrReceiptId {
     Transaction { transaction_hash: CryptoHash, sender_id: near_primitives::types::AccountId },

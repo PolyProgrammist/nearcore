@@ -12,11 +12,11 @@ publish = false
 workspace = true
 
 [dependencies]
-schemars.workspace = true
+schemars = { workspace = true, optional = true }
 serde_json.workspace = true
+okapi.workspace = true
 serde.workspace = true
 serde_with.workspace = true
-okapi.workspace = true
 
 near-jsonrpc-primitives.workspace = true
 near-primitives.workspace = true
