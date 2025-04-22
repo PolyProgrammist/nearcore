@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::str::FromStr;
 use std::sync::LazyLock;
-use schemars::{Schema, gen::SchemaGenerator, JsonSchema};
+use schemars::{Schema, SchemaGenerator, JsonSchema};
 use schemars;
 
 pub static SECP256K1: LazyLock<secp256k1::Secp256k1<secp256k1::All>> =
@@ -279,7 +279,7 @@ impl JsonSchema for PublicKey {
         "PublicKey".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
+    fn json_schema(gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
         String::json_schema(gen)
     }
 }

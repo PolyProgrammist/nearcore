@@ -1,3 +1,4 @@
+#[cfg(feature = "clock")]
 use crate::block::BlockHeader;
 use crate::hash::{hash, CryptoHash};
 use crate::types::{BlockHeight, SignatureDifferentiator};

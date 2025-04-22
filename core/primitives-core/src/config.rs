@@ -1,6 +1,5 @@
 use crate::types::Gas;
 use std::hash::Hash;
-use num_rational::Rational32;
 
 /// Defines value size threshold for flat state inlining.
 /// It means that values having size greater than the threshold will be stored

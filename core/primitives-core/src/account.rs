@@ -383,7 +383,7 @@ impl schemars::JsonSchema for Account {
         "Account".to_string().into()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::Schema {
+    fn json_schema(gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
         SerdeAccount::json_schema(gen)
     }
 }
