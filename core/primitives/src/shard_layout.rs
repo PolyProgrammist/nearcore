@@ -40,13 +40,13 @@ pub type ShardVersion = u32;
     BorshDeserialize,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ShardLayout {
     V0(ShardLayoutV0),
     V1(ShardLayoutV1),
@@ -63,13 +63,13 @@ pub enum ShardLayout {
     BorshDeserialize,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ShardLayoutV0 {
     /// Map accounts evenly across all shards
     num_shards: NumShards,
@@ -118,13 +118,13 @@ fn new_shards_split_map_v2(shards_split_map: BTreeMap<u64, Vec<u64>>) -> ShardsS
     BorshDeserialize,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     Clone,
     Debug,
     PartialEq,
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ShardLayoutV1 {
     /// The boundary accounts are the accounts on boundaries between shards.
     /// Each shard contains a range of accounts from one boundary account to
@@ -198,7 +198,8 @@ pub struct ShardLayoutV2 {
 
 /// Counterpart to `ShardLayoutV2` composed of maps with string keys to aid
 /// serde serialization.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 struct SerdeShardLayoutV2 {
     boundary_accounts: Vec<AccountId>,
     shard_ids: Vec<ShardId>,
@@ -307,6 +308,7 @@ impl<'de> serde::Deserialize<'de> for ShardLayoutV2 {
     }
 }
 
+#[cfg(feature = "schemars")]
 impl schemars::JsonSchema for ShardLayoutV2 {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "ShardLayoutV2".to_string().into()

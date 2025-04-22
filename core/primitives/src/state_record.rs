@@ -16,7 +16,8 @@ use serde_with::base64::Base64;
 use serde_with::serde_as;
 use std::fmt::{Display, Formatter};
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DelayedReceipt {
     #[serde(skip)]
     pub index: Option<u64>,
@@ -27,7 +28,8 @@ pub struct DelayedReceipt {
 
 /// Record in the state storage.
 #[serde_as]
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StateRecord {
     /// Account information.
     Account { account_id: AccountId, account: Account },
@@ -37,7 +39,7 @@ pub enum StateRecord {
     Contract {
         account_id: AccountId,
         #[serde_as(as = "Base64")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         code: Vec<u8>,
     },
     /// Access key associated with some account.
@@ -49,7 +51,7 @@ pub enum StateRecord {
         account_id: AccountId,
         data_id: CryptoHash,
         #[serde_as(as = "Option<Base64>")]
-        #[schemars(with = "Option<String>")]
+        #[cfg_attr(feature = "schemars", schemars(with = "Option<String>"))]
         data: Option<Vec<u8>>,
     },
     /// Delayed Receipt.

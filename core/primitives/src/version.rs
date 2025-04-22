@@ -2,7 +2,8 @@ use crate::types::Balance;
 use std::sync::LazyLock;
 
 /// Data structure for semver version and github tag or commit.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Version {
     pub version: String,
     pub build: String,

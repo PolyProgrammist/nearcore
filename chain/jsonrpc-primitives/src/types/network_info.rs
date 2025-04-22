@@ -2,21 +2,24 @@ use near_primitives::network::PeerId;
 use near_primitives::types::AccountId;
 use std::net::SocketAddr;
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RpcPeerInfo {
     pub id: PeerId,
     pub addr: Option<SocketAddr>,
     pub account_id: Option<AccountId>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RpcKnownProducer {
     pub account_id: AccountId,
     pub addr: Option<SocketAddr>,
     pub peer_id: PeerId,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RpcNetworkInfoResponse {
     pub active_peers: Vec<RpcPeerInfo>,
     pub num_active_peers: usize,
@@ -27,7 +30,8 @@ pub struct RpcNetworkInfoResponse {
     pub known_producers: Vec<RpcKnownProducer>,
 }
 
-#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(thiserror::Error, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcNetworkInfoError {
     #[error("Internal error: {error_message}")]

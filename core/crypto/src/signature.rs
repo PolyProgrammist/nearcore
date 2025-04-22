@@ -10,7 +10,6 @@ use std::hash::{Hash, Hasher};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::str::FromStr;
 use std::sync::LazyLock;
-use schemars::{Schema, SchemaGenerator, JsonSchema};
 use schemars;
 
 pub static SECP256K1: LazyLock<secp256k1::Secp256k1<secp256k1::All>> =
@@ -93,8 +92,9 @@ impl std::fmt::Debug for Secp256K1PublicKey {
 }
 
 #[derive(
-    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema, JsonSchema
+    Clone, Eq, Ord, PartialEq, PartialOrd, derive_more::AsRef, derive_more::From, ProtocolSchema
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[cfg_attr(test, derive(bolero::TypeGenerator))]
 #[as_ref(forward)]
 pub struct ED25519PublicKey(pub [u8; ed25519_dalek::PUBLIC_KEY_LENGTH]);
@@ -274,6 +274,7 @@ impl FromStr for PublicKey {
     }
 }
 
+#[cfg(feature = "schemars")]
 impl JsonSchema for PublicKey {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "PublicKey".to_string().into()
@@ -719,6 +720,7 @@ impl<'de> serde::Deserialize<'de> for Signature {
     }
 }
 
+#[cfg(feature = "schemars")]
 impl JsonSchema for Signature {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Signature".to_string().into()

@@ -17,7 +17,6 @@ use std::fmt;
 use std::io::{self, Read};
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use schemars::JsonSchema;
 
 /// The outgoing (egress) data which will be transformed
 /// to a `DataReceipt` to be sent to a `receipt.receiver`
@@ -31,9 +30,9 @@ use schemars::JsonSchema;
     Eq,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DataReceiver {
     pub data_id: CryptoHash,
     pub receiver_id: AccountId,
@@ -50,9 +49,9 @@ pub struct DataReceiver {
     Clone,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReceiptV0 {
     /// An issuer account_id of a particular receipt.
     /// `predecessor_id` could be either `Transaction` `signer_id` or intermediate contract's `account_id`.
@@ -74,9 +73,9 @@ pub struct ReceiptV0 {
     Clone,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReceiptV1 {
     /// An issuer account_id of a particular receipt.
     /// `predecessor_id` could be either `Transaction` `signer_id` or intermediate contract's `account_id`.
@@ -91,7 +90,8 @@ pub struct ReceiptV1 {
     pub priority: u64,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema, ProtocolSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize, ProtocolSchema)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum Receipt {
     V0(ReceiptV0),
@@ -606,9 +606,9 @@ impl Receipt {
     Eq,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ReceiptEnum {
     Action(ActionReceipt),
     Data(DataReceipt),
@@ -627,9 +627,9 @@ pub enum ReceiptEnum {
     Clone,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ActionReceipt {
     /// A signer of the original transaction
     pub signer_id: AccountId,
@@ -637,7 +637,7 @@ pub struct ActionReceipt {
     pub signer_public_key: PublicKey,
     /// A gas_price which has been used to buy gas in the original transaction
     #[serde(with = "dec_format")]
-    #[schemars(with = "String")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub gas_price: Balance,
     /// If present, where to route the output data
     pub output_data_receivers: Vec<DataReceiver>,
@@ -663,13 +663,13 @@ pub struct ActionReceipt {
     Clone,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DataReceipt {
     pub data_id: CryptoHash,
     #[serde_as(as = "Option<Base64>")]
-    #[schemars(with = "Option<String>")]
+    #[cfg_attr(feature = "schemars", schemars(with = "Option<String>"))]
     pub data: Option<Vec<u8>>,
 }
 
@@ -710,11 +710,11 @@ impl fmt::Debug for ReceivedData {
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct GlobalContractData {
     #[serde_as(as = "Base64")]
-    #[schemars(with = "String")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub code: Arc<[u8]>,
     pub id: GlobalContractIdentifier,
 }

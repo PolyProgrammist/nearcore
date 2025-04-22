@@ -14,7 +14,8 @@ use std::sync::Arc;
 
 pub const TEST_STATE_SYNC_TIMEOUT: i64 = 5;
 
-#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum LogSummaryStyle {
     #[serde(rename = "plain")]
     Plain,
@@ -37,7 +38,8 @@ pub const DEFAULT_STATE_SYNC_NUM_CONCURRENT_REQUESTS_ON_CATCHUP_EXTERNAL: u32 = 
 pub const DEFAULT_EXTERNAL_STORAGE_FALLBACK_THRESHOLD: u64 = 3;
 
 /// Configuration for garbage collection.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct GCConfig {
     /// Maximum number of blocks to garbage collect at every garbage collection
@@ -53,7 +55,7 @@ pub struct GCConfig {
 
     /// How often gc should be run
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub gc_step_period: Duration,
 }
 
@@ -86,7 +88,8 @@ fn default_external_storage_fallback_threshold() -> u64 {
     DEFAULT_EXTERNAL_STORAGE_FALLBACK_THRESHOLD
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ExternalStorageConfig {
     /// Location of state parts.
     pub location: ExternalStorageLocation,
@@ -104,7 +107,8 @@ pub struct ExternalStorageConfig {
     pub external_storage_fallback_threshold: u64,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ExternalStorageLocation {
     S3 {
         /// Location of state dumps on S3.
@@ -121,7 +125,8 @@ pub enum ExternalStorageLocation {
 }
 
 /// Configures how to dump state to external storage.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DumpConfig {
     /// Specifies where to write the obtained state parts.
     pub location: ExternalStorageLocation,
@@ -134,7 +139,7 @@ pub struct DumpConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     #[serde(with = "near_time::serde_opt_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub iteration_delay: Option<Duration>,
     /// Location of a json file with credentials allowing write access to the bucket.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -142,7 +147,8 @@ pub struct DumpConfig {
 }
 
 /// Configures how to fetch state parts during state sync.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum SyncConfig {
     /// Syncs state from the peers without reading anything from external storage.
     Peers,
@@ -156,7 +162,8 @@ impl Default for SyncConfig {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 /// Options for dumping state to S3.
 pub struct StateSyncConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,7 +195,8 @@ impl SyncConfig {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EpochSyncConfig {
     /// If true, even if the node started from genesis, it will not perform epoch sync.
     /// There should be no reason to set this flag in production, because on both mainnet
@@ -211,7 +219,7 @@ pub struct EpochSyncConfig {
     /// Timeout for epoch sync requests. The node will continue retrying indefinitely even
     /// if this timeout is exceeded.
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub timeout_for_epoch_sync: Duration,
 }
 
@@ -251,34 +259,35 @@ impl ReshardingHandle {
 }
 
 /// Configuration for resharding.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Copy, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct ReshardingConfig {
     /// The soft limit on the size of a single batch. The batch size can be
     /// decreased if resharding is consuming too many resources and interfering
     /// with regular node operation.
-    #[schemars(with = "u64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "u64"))]
     pub batch_size: ByteSize,
 
     /// The delay between writing batches to the db. The batch delay can be
     /// increased if resharding is consuming too many resources and interfering
     /// with regular node operation.
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub batch_delay: Duration,
 
     /// The delay between attempts to start resharding while waiting for the
     /// state snapshot to become available.
     /// UNUSED in ReshardingV3.
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub retry_delay: Duration,
 
     /// The delay between the resharding request is received and when the actor
     /// actually starts working on it. This delay should only be used in tests.
     /// UNUSED in ReshardingV3.
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub initial_delay: Duration,
 
     /// The maximum time that the actor will wait for the snapshot to be ready,
@@ -286,13 +295,13 @@ pub struct ReshardingConfig {
     /// report error early enough for the node maintainer to have time to recover.
     /// UNUSED in ReshardingV3.
     #[serde(with = "near_time::serde_duration_as_std")]
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub max_poll_time: Duration,
 
     /// The number of blocks applied in a single batch during shard catch up.
     /// This value can be decreased if resharding is consuming too many
     /// resources and interfering with regular node operation.
-    #[schemars(with = "DurationSchemeProvider")]
+    #[cfg_attr(feature = "schemars", schemars(with = "DurationSchemeProvider"))]
     pub catch_up_blocks: BlockHeightDelta,
 }
 
@@ -419,14 +428,16 @@ pub fn default_orphan_state_witness_max_size() -> ByteSize {
 /// This allows nodes to push and pull chunks from a central stream.
 /// The two benefits of this approach are: (1) less request/response traffic
 /// on the peer-to-peer network and (2) lower latency for RPC nodes indexing the chain.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, PartialEq, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChunkDistributionNetworkConfig {
     pub enabled: bool,
     pub uris: ChunkDistributionUris,
 }
 
 /// URIs for the Chunk Distribution Network feature.
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug, PartialEq, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChunkDistributionUris {
     /// URI for pulling chunks from the stream.
     pub get: String,
@@ -435,7 +446,8 @@ pub struct ChunkDistributionUris {
 }
 
 /// ClientConfig where some fields can be updated at runtime.
-#[derive(Clone, serde::Serialize, schemars::JsonSchema)]
+#[derive(Clone, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ClientConfig {
     /// Version of the binary.
     pub version: Version,
@@ -446,56 +458,56 @@ pub struct ClientConfig {
     /// Graceful shutdown at expected block height.
     pub expected_shutdown: MutableConfigValue<Option<BlockHeight>>,
     /// Duration to check for producing / skipping block.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub block_production_tracking_delay: Duration,
     /// Minimum duration before producing block.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub min_block_production_delay: Duration,
     /// Maximum wait for approvals before producing block.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub max_block_production_delay: Duration,
     /// Maximum duration before skipping given height.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub max_block_wait_delay: Duration,
     /// Skip waiting for sync (for testing or single node testnet).
     pub skip_sync_wait: bool,
     /// How often to check that we are not out of sync.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub sync_check_period: Duration,
     /// While syncing, how long to check for each step.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub sync_step_period: Duration,
     /// Sync height threshold: below this difference in height don't start syncing.
     pub sync_height_threshold: BlockHeightDelta,
     /// Maximum number of block requests to send to peers to sync
     pub sync_max_block_requests: usize,
     /// How much time to wait after initial header sync
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub header_sync_initial_timeout: Duration,
     /// How much time to wait after some progress is made in header sync
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub header_sync_progress_timeout: Duration,
     /// How much time to wait before banning a peer in header sync if sync is too slow
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub header_sync_stall_ban_timeout: Duration,
     /// Expected increase of header head height per second during header sync
     pub header_sync_expected_height_per_second: u64,
     /// How long to wait for a response from centralized state sync
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub state_sync_external_timeout: Duration,
     /// How long to wait for a response from p2p state sync
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub state_sync_p2p_timeout: Duration,
     /// How long to wait after a failed state sync request
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub state_sync_retry_backoff: Duration,
     /// Additional waiting period after a failed request to external storage
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub state_sync_external_backoff: Duration,
     /// Minimum number of peers to start syncing.
     pub min_num_peers: usize,
     /// Period between logging summary information.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub log_summary_period: Duration,
     /// Enable coloring of the logs
     pub log_summary_style: LogSummaryStyle,
@@ -506,18 +518,18 @@ pub struct ClientConfig {
     /// Number of block producer seats
     pub num_block_producer_seats: NumSeats,
     /// Time to persist Accounts Id in the router without removing them.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub ttl_account_id_router: Duration,
     /// Horizon at which instead of fetching block, fetch full state.
     pub block_fetch_horizon: BlockHeightDelta,
     /// Time between check to perform catchup.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub catchup_step_period: Duration,
     /// Time between checking to re-request chunks.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub chunk_request_retry_period: Duration,
     /// Time between running doomslug timer.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub doomslug_step_period: Duration,
     /// Behind this horizon header fetch kicks in.
     pub block_header_fetch_horizon: BlockHeightDelta,
@@ -543,7 +555,7 @@ pub struct ClientConfig {
     /// Number of threads for ViewClientActor pool.
     pub view_client_threads: usize,
     /// Number of seconds between state requests for view client.
-    #[schemars(with = "[u64;2]")]
+    #[cfg_attr(feature = "schemars", schemars(with = "[u64;2]"))]
     pub view_client_throttle_period: Duration,
     /// Upper bound of the byte size of contract state that is still viewable. None is no limit
     pub trie_viewer_state_size_limit: Option<u64>,
@@ -576,7 +588,7 @@ pub struct ClientConfig {
     /// A node produces a chunk by adding transactions from the transaction pool until
     /// some limit is reached. This time limit ensures that adding transactions won't take
     /// longer than the specified duration, which helps to produce the chunk quickly.
-    #[schemars(with = "String")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub produce_chunk_add_transactions_time_limit: MutableConfigValue<Option<Duration>>,
     /// Optional config for the Chunk Distribution Network feature.
     /// If set to `None` then this node does not participate in the Chunk Distribution Network.
@@ -591,7 +603,7 @@ pub struct ClientConfig {
     ///
     /// We keep only orphan witnesses which are smaller than this size.
     /// This limits the maximum memory usage of OrphanStateWitnessPool.
-    #[schemars(with = "u64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "u64"))]
     pub orphan_state_witness_max_size: ByteSize,
     /// Save observed instances of ChunkStateWitness to the database in DBCol::LatestChunkStateWitnesses.
     /// Saving the latest witnesses is useful for analysis and debugging.

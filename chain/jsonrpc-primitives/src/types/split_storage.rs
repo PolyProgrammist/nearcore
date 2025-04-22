@@ -5,16 +5,19 @@ use schemars;
 
 use crate::types::status::RpcStatusError;
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RpcSplitStorageInfoRequest {}
 
-#[derive(Serialize, Deserialize, schemars::JsonSchema, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RpcSplitStorageInfoResponse {
     #[serde(flatten)]
     pub result: SplitStorageInfoView,
 }
 
-#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(thiserror::Error, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "name", content = "info", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RpcSplitStorageInfoError {
     #[error("The node reached its limits. Try again later. More details: {error_message}")]
