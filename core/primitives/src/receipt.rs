@@ -734,6 +734,7 @@ impl fmt::Debug for ReceivedData {
     serde::Serialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum GlobalContractDistributionReceipt {
     V1(GlobalContractDistributionReceiptV1),
 }
