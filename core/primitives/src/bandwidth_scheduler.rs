@@ -27,6 +27,7 @@ pub type Bandwidth = u64;
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum BandwidthRequests {
     V1(BandwidthRequestsV1),
 }
@@ -59,6 +60,7 @@ impl BandwidthRequests {
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BandwidthRequestsV1 {
     pub requests: Vec<BandwidthRequest>,
 }
@@ -77,6 +79,7 @@ pub struct BandwidthRequestsV1 {
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BandwidthRequest {
     /// Requesting bandwidth to this shard.
     pub to_shard: u16,
@@ -185,6 +188,7 @@ impl BandwidthRequestValues {
     Eq,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BandwidthRequestBitmap {
     pub data: [u8; BANDWIDTH_REQUEST_BITMAP_SIZE],
 }

@@ -35,6 +35,7 @@ use std::sync::Arc;
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DataReceiver {
     pub data_id: CryptoHash,
     pub receiver_id: AccountId,
@@ -53,6 +54,7 @@ pub struct DataReceiver {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReceiptV0 {
     /// An issuer account_id of a particular receipt.
     /// `predecessor_id` could be either `Transaction` `signer_id` or intermediate contract's `account_id`.
@@ -76,6 +78,7 @@ pub struct ReceiptV0 {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReceiptV1 {
     /// An issuer account_id of a particular receipt.
     /// `predecessor_id` could be either `Transaction` `signer_id` or intermediate contract's `account_id`.
@@ -91,6 +94,7 @@ pub struct ReceiptV1 {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, serde::Serialize, serde::Deserialize, ProtocolSchema)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum Receipt {
     V0(ReceiptV0),
@@ -627,6 +631,7 @@ impl Receipt {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ReceiptEnum {
     Action(ActionReceipt),
     Data(DataReceipt),
@@ -647,6 +652,7 @@ pub enum ReceiptEnum {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ActionReceipt {
     /// A signer of the original transaction
     pub signer_id: AccountId,
@@ -654,6 +660,7 @@ pub struct ActionReceipt {
     pub signer_public_key: PublicKey,
     /// A gas_price which has been used to buy gas in the original transaction
     #[serde(with = "dec_format")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub gas_price: Balance,
     /// If present, where to route the output data
     pub output_data_receivers: Vec<DataReceiver>,
@@ -681,9 +688,11 @@ pub struct ActionReceipt {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DataReceipt {
     pub data_id: CryptoHash,
     #[serde_as(as = "Option<Base64>")]
+    #[cfg_attr(feature = "schemars", schemars(with = "Option<String>"))]
     pub data: Option<Vec<u8>>,
 }
 
@@ -781,11 +790,13 @@ impl GlobalContractDistributionReceipt {
     serde::Serialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct GlobalContractDistributionReceiptV1 {
     id: GlobalContractIdentifier,
     target_shard: ShardId,
     already_delivered_shards: Vec<ShardId>,
     #[serde_as(as = "Base64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     code: Arc<[u8]>,
 }
 
