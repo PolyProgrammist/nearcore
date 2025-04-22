@@ -369,7 +369,8 @@ pub enum NameRpcErrorKind {
 }
 
 #[cfg(feature = "progenitor")]
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TypeTransactionOrReceiptId {
     Transaction,
@@ -377,7 +378,8 @@ pub enum TypeTransactionOrReceiptId {
 }
 
 #[cfg(feature = "progenitor")]
-#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum TransactionOrReceiptId {
     Transaction { transaction_hash: CryptoHash, sender_id: near_primitives::types::AccountId },

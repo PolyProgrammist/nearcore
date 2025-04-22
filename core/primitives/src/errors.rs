@@ -9,7 +9,6 @@ use near_crypto::PublicKey;
 use near_primitives_core::types::ProtocolVersion;
 use near_schema_checker_lib::ProtocolSchema;
 use std::fmt::{Debug, Display};
-use schemars::JsonSchema;
 
 /// Error returned in the ExecutionOutcome in case of failure
 #[derive(
@@ -22,8 +21,8 @@ use schemars::JsonSchema;
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum TxExecutionError {
     /// An error happened during Action execution
     ActionError(ActionError),
@@ -91,8 +90,8 @@ impl std::error::Error for RuntimeError {}
     BorshSerialize,
     BorshDeserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum MissingTrieValueContext {
     /// Missing trie value when reading from TrieIterator.
     TrieIterator,
@@ -125,8 +124,8 @@ impl MissingTrieValueContext {
     BorshSerialize,
     BorshDeserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MissingTrieValue {
     pub context: MissingTrieValueContext, 
     pub hash: CryptoHash
@@ -144,8 +143,8 @@ pub struct MissingTrieValue {
     BorshSerialize,
     BorshDeserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum StorageError {
     /// Key-value db internal failure
     StorageInternalError,
@@ -191,8 +190,8 @@ impl std::error::Error for StorageError {}
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum InvalidTxError {
     /// Happens if a wrong AccessKey used or AccessKey has not enough permissions
     InvalidAccessKeyError(InvalidAccessKeyError),
@@ -224,10 +223,10 @@ pub enum InvalidTxError {
     NotEnoughBalance {
         signer_id: AccountId,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         balance: Balance,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         cost: Balance,
     },
     /// Signer account doesn't have enough balance after transaction.
@@ -236,7 +235,7 @@ pub enum InvalidTxError {
         signer_id: AccountId,
         /// Required balance to cover the state.
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         amount: Balance,
     },
     /// An integer overflow occurred during transaction cost estimation.
@@ -262,7 +261,7 @@ pub enum InvalidTxError {
         /// The congested shard.
         shard_id: u32,
         /// A value between 0 (no congestion) and 1 (max congestion).
-        #[schemars(with = "f64")]
+        #[cfg_attr(feature = "schemars", schemars(with = "f64"))]
         congestion_level: ordered_float::NotNan<f64>,
     },
     /// The receiver shard of the transaction missed several chunks and rejects
@@ -293,8 +292,8 @@ impl std::error::Error for InvalidTxError {}
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum InvalidAccessKeyError {
     /// The access key identified by the `public_key` doesn't exist for the account
     AccessKeyNotFound { account_id: AccountId, public_key: Box<PublicKey> },
@@ -309,10 +308,10 @@ pub enum InvalidAccessKeyError {
         account_id: AccountId,
         public_key: Box<PublicKey>,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         allowance: Balance,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         cost: Balance,
     },
     /// Having a deposit with a function call action is not allowed with a function call access key.
@@ -330,8 +329,8 @@ pub enum InvalidAccessKeyError {
     serde::Serialize,
     serde::Deserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ActionsValidationError {
     /// The delete action must be a final action in transaction
     DeleteActionMustBeFinal,
@@ -379,8 +378,8 @@ pub enum ActionsValidationError {
     serde::Serialize,
     serde::Deserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ReceiptValidationError {
     /// The `predecessor_id` of a Receipt is not valid.
     InvalidPredecessorId { account_id: String },
@@ -525,8 +524,8 @@ impl std::error::Error for ActionsValidationError {}
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ActionError {
     /// Index of the failed action in the transaction.
     /// Action index is not defined if ActionError.kind is `ActionErrorKind::LackBalanceForState`
@@ -547,8 +546,8 @@ impl std::error::Error for ActionError {}
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ActionErrorKind {
     /// Happens when CreateAccount action tries to create an account with account_id which is already exists in the storage
     AccountAlreadyExists {
@@ -596,7 +595,7 @@ pub enum ActionErrorKind {
         account_id: AccountId,
         /// Balance required to complete an action.
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         amount: Balance,
     },
     /// Account is not yet staked, but tries to unstake
@@ -607,22 +606,22 @@ pub enum ActionErrorKind {
     TriesToStake {
         account_id: AccountId,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         stake: Balance,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         locked: Balance,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         balance: Balance,
     },
     InsufficientStake {
         account_id: AccountId,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         stake: Balance,
         #[serde(with = "dec_format")]
-        #[schemars(with = "String")]
+        #[cfg_attr(feature = "schemars", schemars(with = "String"))]
         minimum_stake: Balance,
     },
     /// An error occurred during a `FunctionCall` Action, parameter is debug message.
@@ -1120,8 +1119,8 @@ impl From<ShardLayoutError> for EpochError {
     serde::Deserialize,
     serde::Serialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 /// Error that can occur while preparing or executing Wasm smart-contract.
 pub enum PrepareError {
     /// Error happened while serializing the module.
@@ -1163,8 +1162,8 @@ pub enum PrepareError {
     serde::Serialize,
     strum::IntoStaticStr,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum WasmTrap {
     /// An `unreachable` opcode was executed.
     Unreachable,
@@ -1197,8 +1196,8 @@ pub enum WasmTrap {
     serde::Serialize,
     strum::IntoStaticStr,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum HostError {
     /// String encoding is bad UTF-16 sequence
     BadUTF16,
@@ -1281,8 +1280,8 @@ pub enum HostError {
     serde::Serialize,
     strum::IntoStaticStr,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum MethodResolveError {
     MethodEmptyName,
     MethodNotFound,
@@ -1300,8 +1299,8 @@ pub enum MethodResolveError {
     serde::Serialize,
     strum::IntoStaticStr,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum CompilationError {
     CodeDoesNotExist {
         account_id: AccountId,
@@ -1329,8 +1328,8 @@ pub enum CompilationError {
     serde::Serialize,
     serde::Deserialize,
     ProtocolSchema,
-    JsonSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum FunctionCallError {
     /// Wasm compilation error
     CompilationError(CompilationError),

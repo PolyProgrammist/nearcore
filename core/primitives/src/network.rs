@@ -20,9 +20,9 @@ use std::sync::Arc;
     Hash,
     serde::Serialize,
     serde::Deserialize,
-    schemars::JsonSchema,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PeerId(Arc<PublicKey>);
 
 impl PeerId {

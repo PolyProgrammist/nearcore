@@ -286,7 +286,6 @@ pub struct BlockHeaderInnerRestV5 {
     BorshSerialize,
     BorshDeserialize,
     serde::Serialize,
-    schemars::JsonSchema,
     Debug,
     Clone,
     PartialEq,
@@ -294,6 +293,7 @@ pub struct BlockHeaderInnerRestV5 {
     Hash,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ApprovalInner {
     Endorsement(CryptoHash),
     Skip(BlockHeight),

@@ -5,7 +5,6 @@ use sha2::Digest;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use schemars::JsonSchema;
 
 #[derive(
     Copy,
@@ -106,7 +105,8 @@ impl CryptoHash {
     }
 }
 
-impl JsonSchema for CryptoHash {
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for CryptoHash {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "CryptoHash".to_string().into()
     }
