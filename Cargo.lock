@@ -4110,6 +4110,7 @@ dependencies = [
 [[package]]
 name = "near-account-id"
 version = "1.0.0"
+source = "git+https://github.com/near/near-account-id-rs.git#ca43d7c6719a099de8e4c095f553a0ea021cd199"
 dependencies = [
  "borsh",
  "schemars 1.0.0-alpha.17",
