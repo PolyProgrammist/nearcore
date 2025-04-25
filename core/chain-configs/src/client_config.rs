@@ -7,13 +7,13 @@ use near_primitives::types::{
 };
 use near_primitives::version::Version;
 use near_time::Duration;
+#[cfg(feature = "schemars")]
+use near_time::DurationSchemeProvider;
 use num_rational::Rational32;
 use std::cmp::{max, min};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-#[cfg(feature = "schemars")]
-use near_time::DurationSchemeProvider;
 
 pub const TEST_STATE_SYNC_TIMEOUT: i64 = 5;
 
