@@ -215,7 +215,7 @@ log = "0.4"
 lru = "0.12.3"
 memoffset = "0.8"
 more-asserts = "0.2"
-near-account-id = { git = "https://github.com/near/near-account-id-rs.git", features = [
+near-account-id = { version = "1.1", features = [
     "internal_unstable",
     "serde",
     "borsh",
@@ -296,7 +296,7 @@ num-bigint = "0.3"
 num_cpus = "1.11"
 num-rational = { version = "0.3.1", features = ["serde"] }
 num-traits = "0.2.15"
-okapi = { git = "https://github.com/polyprogrammist/okapi.git", branch = "alpha", features = ["schemars-alpha"] }
+okapi = { git = "https://github.com/near/near-okapi-fork.git", rev = "fd7de89e130ab99a546f04e3faefcd53044f98d0", features = ["schemars-alpha"] }
 object_store = { version = "0.12", features = ["gcp"] }
 openssl = { version = "0.10.70", features = ["vendored"] }
 openssl-probe = "0.1.4"
