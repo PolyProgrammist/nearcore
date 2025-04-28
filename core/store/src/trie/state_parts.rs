@@ -537,8 +537,8 @@ mod tests {
     };
 
     use super::*;
-    use crate::MissingTrieValueContext;
     use crate::MissingTrieValue;
+    use crate::MissingTrieValueContext;
     use near_primitives::shard_layout::ShardUId;
 
     /// Checks that sampling state boundaries always gives valid state keys
@@ -1247,8 +1247,8 @@ mod tests {
 
         assert_eq!(
             trie_without_flat.get_trie_nodes_for_part_without_flat_storage(part_id),
-            Err(StorageError::MissingTrieValue(MissingTrieValue{
-                context: MissingTrieValueContext::TrieStorage, 
+            Err(StorageError::MissingTrieValue(MissingTrieValue {
+                context: MissingTrieValueContext::TrieStorage,
                 hash: value_hash
             })),
         );
