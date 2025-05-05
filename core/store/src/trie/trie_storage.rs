@@ -324,10 +324,7 @@ impl TrieStorage for TrieMemoryPartialStorage {
             Ok(value)
         } else {
             metrics::TRIE_MEMORY_PARTIAL_STORAGE_MISSING_VALUES_COUNT.inc();
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                hash: *hash,
-            }))
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, *hash))
         }
     }
 

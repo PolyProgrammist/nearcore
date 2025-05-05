@@ -44,10 +44,7 @@ impl TrieStorage for IncompletePartialStorage {
         lock.insert(*hash);
 
         if lock.len() > self.node_count_to_fail_after {
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                hash: *hash,
-            }))
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, *hash))
         } else {
             Ok(result)
         }
@@ -84,10 +81,7 @@ where
         if i < size {
             assert_matches!(
                 result,
-                Err(StorageError::MissingTrieValue(MissingTrieValue {
-                    context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                    hash: _
-                }))
+                Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
             );
         } else {
             assert_eq!(result.as_ref(), Ok(&expected));
@@ -224,7 +218,7 @@ mod trie_storage_tests {
         let key = hash(&value);
 
         let result = trie_caching_storage.retrieve_raw_bytes(&key);
-        assert_matches!(result, Err(StorageError::MissingTrieValue(_)));
+        assert_matches!(result, Err(StorageError::MissingTrieValue(_, _)));
     }
 
     fn test_memtrie_and_disk_updates_consistency(updates: Vec<(Vec<u8>, Option<Vec<u8>>)>) {

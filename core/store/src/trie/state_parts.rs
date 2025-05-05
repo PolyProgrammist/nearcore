@@ -1092,10 +1092,7 @@ mod tests {
 
         assert_matches!(
             Trie::validate_state_part(&root, part_id, wrong_state_part),
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                hash: _
-            }))
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
         );
 
         // Add extra value to the state part, check that validation fails.
@@ -1208,10 +1205,7 @@ mod tests {
                 nibbles_end,
                 &trie_without_flat,
             ),
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                hash: _
-            }))
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
         );
 
         // Fill flat storage and check that state part creation succeeds.
@@ -1247,10 +1241,7 @@ mod tests {
 
         assert_eq!(
             trie_without_flat.get_trie_nodes_for_part_without_flat_storage(part_id),
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieStorage,
-                hash: value_hash
-            })),
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieStorage, value_hash)),
         );
 
         assert_eq!(
@@ -1280,10 +1271,7 @@ mod tests {
                 nibbles_end,
                 &trie_without_flat,
             ),
-            Err(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieMemoryPartialStorage,
-                hash: _
-            }))
+            Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
         );
     }
 }

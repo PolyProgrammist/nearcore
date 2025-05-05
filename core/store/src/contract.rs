@@ -117,7 +117,7 @@ impl ContractStorage {
 
         match self.storage.retrieve_raw_bytes(&code_hash) {
             Ok(raw_code) => Some(ContractCode::new(raw_code.to_vec(), Some(code_hash))),
-            Err(StorageError::MissingTrieValue(MissingTrieValue { context, hash: _ })) => {
+            Err(StorageError::MissingTrieValue(context, _)) => {
                 metrics::STORAGE_MISSING_CONTRACTS_COUNT
                     .with_label_values(&[context.metrics_label()])
                     .inc();
@@ -216,10 +216,7 @@ mod tests {
         fn retrieve_raw_bytes(&self, hash: &CryptoHash) -> Result<Arc<[u8]>, StorageError> {
             match self.store.get(hash) {
                 Some(data) => Ok(data.clone()),
-                None => Err(StorageError::MissingTrieValue(MissingTrieValue {
-                    context: MissingTrieValueContext::TrieStorage,
-                    hash: *hash,
-                })),
+                None => Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieStorage, *hash)),
             }
         }
     }

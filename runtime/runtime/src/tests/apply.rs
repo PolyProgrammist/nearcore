@@ -1258,18 +1258,12 @@ fn test_main_storage_proof_size_soft_limit() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
     );
 }
 
@@ -1382,18 +1376,12 @@ fn test_exclude_contract_code_from_witness() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
     );
 }
 
@@ -1493,18 +1481,12 @@ fn test_exclude_contract_code_from_witness_with_failed_call() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValue {
-            context: MissingTrieValueContext::TrieMemoryPartialStorage,
-            hash: _
-        }))
+        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _)) 
     );
 }
 

@@ -42,10 +42,7 @@ impl TrieStoreAdapter {
             .store
             .get(DBCol::State, key.as_ref())
             .map_err(|_| StorageError::StorageInternalError)?
-            .ok_or(StorageError::MissingTrieValue(MissingTrieValue {
-                context: MissingTrieValueContext::TrieStorage,
-                hash: *hash,
-            }))?;
+            .ok_or(StorageError::MissingTrieValue(MissingTrieValueContext::TrieStorage, *hash))?;
         Ok(val.into())
     }
 
@@ -244,7 +241,7 @@ mod tests {
 
         assert_matches!(
             store.get(shard_uids[0], &dummy_hash),
-            Err(StorageError::MissingTrieValue(MissingTrieValue { context: _, hash: _ }))
+            Err(StorageError::MissingTrieValue(_, _))
         );
         {
             let mut store_update = store.store_update();
@@ -261,7 +258,7 @@ mod tests {
         }
         assert_matches!(
             store.get(shard_uids[0], &dummy_hash),
-            Err(StorageError::MissingTrieValue(_))
+            Err(StorageError::MissingTrieValue(_, _))
         );
     }
 
@@ -281,7 +278,7 @@ mod tests {
         // The data is not yet visible to child shard, because the mapping has not been set yet.
         assert_matches!(
             store.get(child_shard, &dummy_hash),
-            Err(StorageError::MissingTrieValue(_))
+            Err(StorageError::MissingTrieValue(_, _))
         );
         // Set the shard_uid mapping from `child_shard` to `parent_shard`.
         {
@@ -301,11 +298,11 @@ mod tests {
         // The data is now not visible to any shard.
         assert_matches!(
             store.get(child_shard, &dummy_hash),
-            Err(StorageError::MissingTrieValue(_))
+            Err(StorageError::MissingTrieValue(_, _))
         );
         assert_matches!(
             store.get(parent_shard, &dummy_hash),
-            Err(StorageError::MissingTrieValue(_))
+            Err(StorageError::MissingTrieValue(_, _))
         );
         // Restore the data now using the `child_shard` UId.
         {
@@ -325,7 +322,7 @@ mod tests {
         // The data is not visible to any shard again.
         assert_matches!(
             store.get(child_shard, &dummy_hash),
-            Err(StorageError::MissingTrieValue(_))
+            Err(StorageError::MissingTrieValue(_, _))
         );
     }
 }
