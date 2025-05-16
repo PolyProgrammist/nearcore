@@ -1642,7 +1642,7 @@ fn test_validator_consistency() {
     let epoch_id = epoch_manager.get_epoch_id(&h[0]).unwrap();
     let epoch_info = epoch_manager.get_epoch_info(&epoch_id).unwrap();
     let mut actual_block_producers = HashSet::new();
-    for index in epoch_info.block_producers_settlement().into_iter() {
+    for index in epoch_info.block_producers_settlement() {
         let bp = epoch_info.validator_account_id(*index).clone();
         actual_block_producers.insert(bp);
     }
@@ -2173,9 +2173,9 @@ fn test_validator_kickout_determinism() {
         (ShardId::new(0), chunk_stats0.clone().into_iter().collect()),
         (ShardId::new(1), chunk_stats1.clone().into_iter().collect()),
     ]);
-    let chunk_stats0: Vec<_> = chunk_stats0.into_iter().rev().collect();
+    let chunk_stats0 = chunk_stats0.into_iter().rev();
     let chunk_stats_tracker2 = HashMap::from([
-        (ShardId::new(0), chunk_stats0.into_iter().collect()),
+        (ShardId::new(0), chunk_stats0.collect()),
         (ShardId::new(1), chunk_stats1.into_iter().collect()),
     ]);
     let (_validator_stats, kickouts1) = EpochManager::compute_validators_to_reward_and_kickout(
@@ -2832,7 +2832,6 @@ fn test_block_and_chunk_producer_not_kicked_out_for_low_endorsements() {
 
 fn test_chunk_header(h: &[CryptoHash], signer: &ValidatorSigner) -> ShardChunkHeader {
     ShardChunkHeader::V3(ShardChunkHeaderV3::new(
-        PROTOCOL_VERSION,
         h[0],
         h[2],
         h[2],
@@ -2847,7 +2846,7 @@ fn test_chunk_header(h: &[CryptoHash], signer: &ValidatorSigner) -> ShardChunkHe
         h[2],
         vec![],
         Default::default(),
-        BandwidthRequests::default_for_protocol_version(PROTOCOL_VERSION),
+        BandwidthRequests::empty(),
         signer,
     ))
 }

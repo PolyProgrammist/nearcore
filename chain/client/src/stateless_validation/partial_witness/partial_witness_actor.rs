@@ -690,7 +690,7 @@ impl PartialWitnessActor {
         let contracts = contract_codes.into_iter().map(|contract| contract.into()).collect();
         let compressed_deploys = ChunkContractDeploys::compress_contracts(&contracts)?;
         let validator_parts = self.generate_contract_deploys_parts(&key, compressed_deploys)?;
-        for (part_owner, deploys_part) in validator_parts.into_iter() {
+        for (part_owner, deploys_part) in validator_parts {
             self.network_adapter.send(PeerManagerMessageRequest::NetworkRequests(
                 NetworkRequests::PartialEncodedContractDeploys(vec![part_owner], deploys_part),
             ));
@@ -768,7 +768,7 @@ impl PartialWitnessActor {
             }
             match storage.retrieve_raw_bytes(&contract_hash.0) {
                 Ok(bytes) => contracts.push(CodeBytes(bytes)),
-                Err(StorageError::MissingTrieValue(_, _)) => {
+                Err(StorageError::MissingTrieValue(_)) => {
                     tracing::warn!(
                         target: "client",
                         ?contract_hash,

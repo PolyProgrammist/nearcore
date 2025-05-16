@@ -1,5 +1,5 @@
 use crate::{TrieStorage, metrics};
-use near_primitives::errors::StorageError;
+use near_primitives::errors::{MissingTrieValue, StorageError};
 use near_primitives::hash::CryptoHash;
 use near_primitives::stateless_validation::contract_distribution::{CodeHash, ContractUpdates};
 use near_vm_runner::ContractCode;
@@ -62,7 +62,7 @@ impl ContractsTracker {
     /// Commits the uncommitted deployments by moving them to the set of committed deployments and clearing the uncommitted list.
     fn commit_deploys(&mut self) {
         let deploys = std::mem::take(&mut self.uncommitted_deploys);
-        for (code_hash, contract) in deploys.into_iter() {
+        for (code_hash, contract) in deploys {
             self.committed_deploys.insert(code_hash, contract);
         }
     }
@@ -117,7 +117,7 @@ impl ContractStorage {
 
         match self.storage.retrieve_raw_bytes(&code_hash) {
             Ok(raw_code) => Some(ContractCode::new(raw_code.to_vec(), Some(code_hash))),
-            Err(StorageError::MissingTrieValue(context, _)) => {
+            Err(StorageError::MissingTrieValue(MissingTrieValue { context, hash: _ })) => {
                 metrics::STORAGE_MISSING_CONTRACTS_COUNT
                     .with_label_values(&[context.metrics_label()])
                     .inc();
@@ -190,7 +190,7 @@ mod tests {
 
     use itertools::Itertools;
     use near_primitives::{
-        errors::{MissingTrieValueContext, StorageError},
+        errors::{MissingTrieValue, MissingTrieValueContext, StorageError},
         hash::CryptoHash,
         stateless_validation::contract_distribution::CodeHash,
     };
@@ -216,9 +216,10 @@ mod tests {
         fn retrieve_raw_bytes(&self, hash: &CryptoHash) -> Result<Arc<[u8]>, StorageError> {
             match self.store.get(hash) {
                 Some(data) => Ok(data.clone()),
-                None => {
-                    Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieStorage, *hash))
-                }
+                None => Err(StorageError::MissingTrieValue(MissingTrieValue {
+                    context: MissingTrieValueContext::TrieStorage,
+                    hash: *hash,
+                })),
             }
         }
     }
@@ -231,7 +232,7 @@ mod tests {
 
         // Insert old contracts (already deployed contracts) into the storage.
         let mut mock_storage = MockTrieStorage::new();
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             mock_storage.insert(*contract.hash(), contract.code().to_vec().into());
         }
 
@@ -280,17 +281,17 @@ mod tests {
 
         // Insert old contracts (already deployed contracts) into the storage.
         let mut mock_storage = MockTrieStorage::new();
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             mock_storage.insert(*contract.hash(), contract.code().to_vec().into());
         }
 
         let mut contract_storage = ContractStorage::new(Arc::new(mock_storage));
 
         // Only existing contracts should be returned by `get` before deploying the new ones.
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in new_contracts.iter() {
+        for contract in new_contracts {
             assert!(contract_storage.get(*contract.hash()).is_none());
         }
 
@@ -299,19 +300,19 @@ mod tests {
 
         // Make the same `get` calls before and after commit. Both should return the same results.
 
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in new_contracts.iter() {
+        for contract in new_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
 
         contract_storage.commit_deploys();
 
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in new_contracts.iter() {
+        for contract in new_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
     }
@@ -324,7 +325,7 @@ mod tests {
 
         // Insert old contracts (already deployed contracts) into the storage.
         let mut mock_storage = MockTrieStorage::new();
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             mock_storage.insert(*contract.hash(), contract.code().to_vec().into());
         }
 
@@ -336,19 +337,19 @@ mod tests {
         // Make the same `get` calls before and after rollback. Calls before rollback return the new contracts
         // but those after rollback should return only the old contracts.
 
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in new_contracts.iter() {
+        for contract in new_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
 
         contract_storage.rollback_deploys();
 
-        for contract in old_contracts.iter() {
+        for contract in old_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in new_contracts.iter() {
+        for contract in new_contracts {
             assert!(contract_storage.get(*contract.hash()).is_none());
         }
     }
@@ -361,7 +362,7 @@ mod tests {
 
         // Insert old contracts (already deployed contracts) into the storage.
         let mut mock_storage = MockTrieStorage::new();
-        for contract in existing_contracts.iter() {
+        for contract in existing_contracts {
             mock_storage.insert(*contract.hash(), contract.code().to_vec().into());
         }
 
@@ -370,23 +371,23 @@ mod tests {
         // Make the same `get` calls before and after finalizing the tracker.
         // Both should return the same results for existing and missing contracts.
 
-        for contract in existing_contracts.iter() {
+        for contract in existing_contracts {
             assert_eq!(contract_storage.get(*contract.hash()).unwrap().hash(), contract.hash());
         }
-        for contract in missing_contracts.iter() {
+        for contract in missing_contracts {
             assert!(contract_storage.get(*contract.hash()).is_none());
         }
 
         let contract_storage_clone = contract_storage.clone();
         let _ = contract_storage.finalize();
 
-        for contract in existing_contracts.iter() {
+        for contract in existing_contracts {
             assert_eq!(
                 contract_storage_clone.get(*contract.hash()).unwrap().hash(),
                 contract.hash()
             );
         }
-        for contract in missing_contracts.iter() {
+        for contract in missing_contracts {
             assert!(contract_storage_clone.get(*contract.hash()).is_none());
         }
     }

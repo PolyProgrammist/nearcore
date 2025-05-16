@@ -222,7 +222,7 @@ impl TrieUpdate {
 
     pub fn commit(&mut self, event: StateChangeCause) {
         let prospective = std::mem::take(&mut self.prospective);
-        for (raw_key, TrieKeyValueUpdate { trie_key, value }) in prospective.into_iter() {
+        for (raw_key, TrieKeyValueUpdate { trie_key, value }) in prospective {
             self.committed
                 .entry(raw_key)
                 .or_insert_with(|| RawStateChangesWithTrieKey { trie_key, changes: Vec::new() })
@@ -346,11 +346,7 @@ impl TrieUpdate {
             .or_else(|err| {
                 // If the value for the trie key is not found, we treat it as if the contract does not exist.
                 // In this case, we ignore the error and skip recording the contract call below.
-                if matches!(err, StorageError::MissingTrieValue(_, _)) {
-                    Ok(None)
-                } else {
-                    Err(err)
-                }
+                if matches!(err, StorageError::MissingTrieValue(_)) { Ok(None) } else { Err(err) }
             })?;
         let contract_exists =
             contract_ref.is_some_and(|value_ref| value_ref.value_hash() == code_hash);
