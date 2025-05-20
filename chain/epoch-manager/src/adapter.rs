@@ -586,12 +586,6 @@ pub trait EpochManagerAdapter: Send + Sync {
         next_epoch_info: EpochInfo,
     ) -> Result<(), EpochError>;
 
-    /// This is needed as a temporary hack required for legacy tests
-    /// using MockEpochManager to work.
-    fn should_validate_signatures(&self) -> bool {
-        true
-    }
-
     /// Verify validator signature for the given epoch.
     fn verify_validator_signature(
         &self,
@@ -600,12 +594,8 @@ pub trait EpochManagerAdapter: Send + Sync {
         data: &[u8],
         signature: &Signature,
     ) -> Result<bool, Error> {
-        if self.should_validate_signatures() {
-            let validator = self.get_validator_by_account_id(epoch_id, account_id)?;
-            Ok(signature.verify(data, validator.public_key()))
-        } else {
-            Ok(true)
-        }
+        let validator = self.get_validator_by_account_id(epoch_id, account_id)?;
+        Ok(signature.verify(data, validator.public_key()))
     }
 
     fn cares_about_shard_in_epoch(
@@ -623,7 +613,7 @@ pub trait EpochManagerAdapter: Send + Sync {
         let chunk_producers = chunk_producers_settlement
             .get(shard_index)
             .ok_or_else(|| EpochError::ShardingError(format!("invalid shard id {shard_id}")))?;
-        for validator_id in chunk_producers.iter() {
+        for validator_id in chunk_producers {
             if epoch_info.validator_account_id(*validator_id) == account_id {
                 return Ok(true);
             }

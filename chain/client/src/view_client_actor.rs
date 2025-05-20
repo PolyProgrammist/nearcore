@@ -41,6 +41,7 @@ use near_network::types::{
 use near_performance_metrics_macros::perf;
 use near_primitives::block::{Block, BlockHeader};
 use near_primitives::epoch_info::EpochInfo;
+use near_primitives::errors::EpochError;
 use near_primitives::hash::CryptoHash;
 use near_primitives::merkle::{PartialMerkleTree, merklize};
 use near_primitives::network::AnnounceAccount;
@@ -50,10 +51,9 @@ use near_primitives::state_sync::{
     ShardStateSyncResponse, ShardStateSyncResponseHeader, ShardStateSyncResponseV3,
 };
 use near_primitives::stateless_validation::ChunkProductionKey;
-use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::{
-    AccountId, BlockHeight, BlockId, BlockReference, EpochReference, Finality, MaybeBlockId,
-    ShardId, SyncCheckpoint, TransactionOrReceiptId, ValidatorInfoIdentifier,
+    AccountId, BlockHeight, BlockId, BlockReference, EpochId, EpochReference, Finality,
+    MaybeBlockId, ShardId, SyncCheckpoint, TransactionOrReceiptId, ValidatorInfoIdentifier,
 };
 use near_primitives::validator_signer::ValidatorSigner;
 use near_primitives::views::validator_stake_view::ValidatorStakeView;
@@ -64,21 +64,19 @@ use near_primitives::views::{
     SignedTransactionView, SplitStorageInfoView, StateChangesKindsView, StateChangesView,
     TxExecutionStatus, TxStatusView,
 };
-use near_store::flat::{FlatStorageReadyStatus, FlatStorageStatus};
 use near_store::{COLD_HEAD_KEY, DBCol, FINAL_HEAD_KEY, HEAD_KEY};
+use parking_lot::{Mutex, RwLock};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use tracing::{error, info, warn};
 
 /// Max number of queries that we keep.
 const QUERY_REQUEST_LIMIT: usize = 500;
 /// Waiting time between requests, in ms
 const REQUEST_WAIT_TIME: i64 = 1000;
-
-const POISONED_LOCK_ERR: &str = "The lock was poisoned.";
 
 /// Request and response manager across all instances of ViewClientActor.
 pub struct ViewClientRequestManager {
@@ -349,7 +347,7 @@ impl ViewClientActorInner {
         Ok(windows)
     }
 
-    fn handle_query(&mut self, msg: Query) -> Result<QueryResponse, QueryError> {
+    fn handle_query(&self, msg: Query) -> Result<QueryResponse, QueryError> {
         let header = self.get_block_header_by_reference(&msg.block_reference);
         let header = match header {
             Ok(Some(header)) => Ok(header),
@@ -363,17 +361,9 @@ impl ViewClientActorInner {
             Err(err) => Err(QueryError::Unreachable { error_message: err.to_string() }),
         }?;
 
-        let account_id = match &msg.request {
-            QueryRequest::ViewAccount { account_id, .. } => account_id,
-            QueryRequest::ViewState { account_id, .. } => account_id,
-            QueryRequest::ViewAccessKey { account_id, .. } => account_id,
-            QueryRequest::ViewAccessKeyList { account_id, .. } => account_id,
-            QueryRequest::CallFunction { account_id, .. } => account_id,
-            QueryRequest::ViewCode { account_id, .. } => account_id,
-        };
-        let shard_id =
-            account_id_to_shard_id(self.epoch_manager.as_ref(), account_id, header.epoch_id())
-                .map_err(|err| QueryError::InternalError { error_message: err.to_string() })?;
+        let shard_id = self
+            .query_shard_uid(&msg.request, *header.epoch_id())
+            .map_err(|err| QueryError::InternalError { error_message: err.to_string() })?;
         let shard_uid =
             shard_id_to_uid(self.epoch_manager.as_ref(), shard_id, header.epoch_id())
                 .map_err(|err| QueryError::InternalError { error_message: err.to_string() })?;
@@ -456,7 +446,35 @@ impl ViewClientActorInner {
                     block_height,
                     block_hash,
                 },
+                near_chain::near_chain_primitives::error::QueryError::NoGlobalContractCode {
+                    identifier,
+                    block_height,
+                    block_hash,
+                } => QueryError::NoGlobalContractCode { identifier, block_height, block_hash },
             }),
+        }
+    }
+
+    fn query_shard_uid(
+        &self,
+        request: &QueryRequest,
+        epoch_id: EpochId,
+    ) -> Result<ShardId, EpochError> {
+        match &request {
+            QueryRequest::ViewAccount { account_id, .. }
+            | QueryRequest::ViewState { account_id, .. }
+            | QueryRequest::ViewAccessKey { account_id, .. }
+            | QueryRequest::ViewAccessKeyList { account_id, .. }
+            | QueryRequest::CallFunction { account_id, .. }
+            | QueryRequest::ViewCode { account_id, .. } => {
+                account_id_to_shard_id(self.epoch_manager.as_ref(), account_id, &epoch_id)
+            }
+            QueryRequest::ViewGlobalContractCode { .. }
+            | QueryRequest::ViewGlobalContractCodeByAccountId { .. } => {
+                // for global contract queries we can use any shard_id, so just take the first one
+                let shard_ids = self.epoch_manager.shard_ids(&epoch_id)?;
+                Ok(*shard_ids.iter().next().expect("at least one shard should always exist"))
+            }
         }
     }
 
@@ -536,7 +554,7 @@ impl ViewClientActorInner {
     }
 
     fn get_tx_status(
-        &mut self,
+        &self,
         tx_hash: CryptoHash,
         signer_account_id: AccountId,
         fetch_receipt: bool,
@@ -545,7 +563,7 @@ impl ViewClientActorInner {
         {
             // TODO(telezhnaya): take into account `fetch_receipt()`
             // https://github.com/near/nearcore/issues/9545
-            let mut request_manager = self.request_manager.write().expect(POISONED_LOCK_ERR);
+            let mut request_manager = self.request_manager.write();
             if let Some(res) = request_manager.tx_status_response.pop(&tx_hash) {
                 request_manager.tx_status_requests.pop(&tx_hash);
                 let status = self.get_tx_execution_status(&res)?;
@@ -586,8 +604,8 @@ impl ViewClientActorInner {
                 Err(near_chain::Error::DBNotFoundErr(_)) => {
                     if let Ok(Some(transaction)) = self.chain.chain_store.get_transaction(&tx_hash)
                     {
-                        let transaction: SignedTransactionView =
-                            SignedTransaction::clone(&transaction).into();
+                        let transaction =
+                            SignedTransactionView::from(Arc::unwrap_or_clone(transaction));
                         if let Ok(tx_outcome) = self.chain.get_execution_outcome(&tx_hash) {
                             let outcome = FinalExecutionOutcomeViewEnum::FinalExecutionOutcome(
                                 FinalExecutionOutcomeView {
@@ -617,7 +635,7 @@ impl ViewClientActorInner {
                 }
             }
         } else {
-            let mut request_manager = self.request_manager.write().expect(POISONED_LOCK_ERR);
+            let mut request_manager = self.request_manager.write();
             if self.need_request(tx_hash, &mut request_manager.tx_status_requests) {
                 let target_shard_id = account_id_to_shard_id(
                     self.epoch_manager.as_ref(),
@@ -644,7 +662,7 @@ impl ViewClientActorInner {
     }
 
     fn retrieve_headers(
-        &mut self,
+        &self,
         hashes: Vec<CryptoHash>,
     ) -> Result<Vec<BlockHeader>, near_chain::Error> {
         retrieve_headers(self.chain.chain_store(), hashes, sync::header::MAX_BLOCK_HEADERS, None)
@@ -668,7 +686,7 @@ impl ViewClientActorInner {
     /// Returns true if this request needs to be **dropped** due to exceeding a
     /// rate limit of state sync requests.
     fn throttle_state_sync_request(&self) -> bool {
-        let mut cache = self.state_request_cache.lock().expect(POISONED_LOCK_ERR);
+        let mut cache = self.state_request_cache.lock();
         let now = self.clock.now();
         while let Some(&instant) = cache.front() {
             if now - instant > self.config.view_client_throttle_period {
@@ -684,27 +702,6 @@ impl ViewClientActorInner {
         }
         cache.push_back(now);
         false
-    }
-
-    fn has_state_snapshot(&self, sync_hash: &CryptoHash, shard_id: ShardId) -> Result<bool, Error> {
-        let header = self.chain.get_block_header(sync_hash)?;
-        let prev_header = self.chain.get_block_header(header.prev_hash())?;
-        let prev_epoch_id = prev_header.epoch_id();
-        let shard_uid = shard_id_to_uid(self.epoch_manager.as_ref(), shard_id, prev_epoch_id)?;
-        let sync_prev_prev_hash = prev_header.prev_hash();
-        let status = self
-            .runtime
-            .get_tries()
-            .get_snapshot_flat_storage_status(*sync_prev_prev_hash, shard_uid)
-            .map_err(|err| Error::Other(err.to_string()))?;
-        match status {
-            FlatStorageStatus::Ready(FlatStorageReadyStatus { flat_head }) => {
-                let flat_head_header = self.chain.get_block_header(&flat_head.hash)?;
-                let flat_head_epoch_id = flat_head_header.epoch_id();
-                Ok(flat_head_epoch_id == prev_epoch_id)
-            }
-            _ => Ok(false),
-        }
     }
 }
 
@@ -1293,7 +1290,7 @@ impl Handler<TxStatusResponse> for ViewClientActorInner {
             .with_label_values(&["TxStatusResponse"])
             .start_timer();
         let tx_hash = tx_result.transaction_outcome.id;
-        let mut request_manager = self.request_manager.write().expect(POISONED_LOCK_ERR);
+        let mut request_manager = self.request_manager.write();
         if request_manager.tx_status_requests.pop(&tx_hash).is_some() {
             request_manager.tx_status_response.put(tx_hash, *tx_result);
         }
@@ -1378,19 +1375,18 @@ impl Handler<StateRequestHeader> for ViewClientActorInner {
                     }
                 };
 
-                let can_generate = self.has_state_snapshot(&sync_hash, shard_id).is_ok();
                 ShardStateSyncResponse::V3(ShardStateSyncResponseV3 {
                     header: Some(header),
                     part: None,
-                    cached_parts: None,
-                    can_generate,
+                    cached_parts: None,  // Unused
+                    can_generate: false, // Unused
                 })
             }
             None => ShardStateSyncResponse::V3(ShardStateSyncResponseV3 {
                 header: None,
                 part: None,
-                cached_parts: None,
-                can_generate: false,
+                cached_parts: None,  // Unused
+                can_generate: false, // Unused
             }),
         };
         let info = StateResponseInfo::V2(Box::new(StateResponseInfoV2 {
@@ -1412,10 +1408,6 @@ impl Handler<StateRequestPart> for ViewClientActorInner {
         let StateRequestPart { shard_id, sync_hash, part_id } = msg;
         if self.throttle_state_sync_request() {
             metrics::STATE_SYNC_REQUESTS_THROTTLED_TOTAL.inc();
-            return None;
-        }
-        if let Err(err) = self.has_state_snapshot(&sync_hash, shard_id) {
-            tracing::debug!(target: "sync", ?err, ?sync_hash, "Node doesn't have a matching state snapshot");
             return None;
         }
         tracing::debug!(target: "sync", ?shard_id, ?sync_hash, ?part_id, "Computing state request part");
@@ -1452,12 +1444,11 @@ impl Handler<StateRequestPart> for ViewClientActorInner {
                 None
             }
         };
-        let can_generate = part.is_some();
         let state_response = ShardStateSyncResponse::V3(ShardStateSyncResponseV3 {
             header: None,
             part,
-            cached_parts: None,
-            can_generate,
+            cached_parts: None,  // Unused
+            can_generate: false, // Unused
         });
         let info = StateResponseInfo::V2(Box::new(StateResponseInfoV2 {
             shard_id,

@@ -13,6 +13,7 @@ use crate::client::{CatchupState, Client, EPOCH_START_INFO_BLOCKS};
 use crate::config_updater::ConfigUpdater;
 use crate::debug::new_network_info_view;
 use crate::info::{InfoHelper, display_sync_status};
+use crate::stateless_validation::chunk_endorsement::ChunkEndorsementTracker;
 use crate::stateless_validation::partial_witness::partial_witness_actor::PartialWitnessSenderForClient;
 use crate::sync::handler::SyncHandlerRequest;
 use crate::sync::state::chain_requests::{
@@ -41,7 +42,7 @@ use near_chain::types::RuntimeAdapter;
 use near_chain::{
     Block, BlockHeader, ChainGenesis, Provenance, byzantine_assert, near_chain_primitives,
 };
-use near_chain_configs::{ClientConfig, MutableValidatorSigner, ReshardingHandle};
+use near_chain_configs::{ClientConfig, MutableValidatorSigner};
 use near_chain_primitives::error::EpochErrorResultToChainError;
 use near_chunks::adapter::ShardsManagerRequestFromClient;
 use near_chunks::client::{ShardedTransactionPool, ShardsManagerResponse};
@@ -52,8 +53,8 @@ use near_client_primitives::types::{
 use near_epoch_manager::EpochManagerAdapter;
 use near_epoch_manager::shard_tracker::ShardTracker;
 use near_network::client::{
-    BlockApproval, BlockHeadersResponse, BlockResponse, ChunkEndorsementMessage,
-    OptimisticBlockMessage, SetNetworkInfo, StateResponseReceived,
+    BlockApproval, BlockHeadersResponse, BlockResponse, OptimisticBlockMessage, SetNetworkInfo,
+    StateResponseReceived,
 };
 use near_network::types::ReasonForBan;
 use near_network::types::{
@@ -70,15 +71,16 @@ use near_primitives::types::{AccountId, BlockHeight};
 use near_primitives::unwrap_or_return;
 use near_primitives::utils::MaybeValidated;
 use near_primitives::validator_signer::ValidatorSigner;
-use near_primitives::version::{PROTOCOL_UPGRADE_SCHEDULE, PROTOCOL_VERSION, ProtocolFeature};
+use near_primitives::version::{PROTOCOL_VERSION, ProtocolFeature, get_protocol_upgrade_schedule};
 use near_primitives::views::{DetailedDebugStatus, ValidatorInfo};
 #[cfg(feature = "test_features")]
 use near_store::DBCol;
 use near_telemetry::TelemetryEvent;
+use parking_lot::Mutex;
 use rand::seq::SliceRandom;
 use rand::{Rng, thread_rng};
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, debug_span, error, info, trace, warn};
 
@@ -117,8 +119,8 @@ fn wait_until_genesis(genesis_time: &Utc) {
 pub struct StartClientResult {
     pub client_actor: actix::Addr<ClientActor>,
     pub client_arbiter_handle: actix::ArbiterHandle,
-    pub resharding_handle: ReshardingHandle,
     pub tx_pool: Arc<Mutex<ShardedTransactionPool>>,
+    pub chunk_endorsement_tracker: Arc<ChunkEndorsementTracker>,
 }
 
 /// Starts client in a separate Arbiter (thread).
@@ -151,6 +153,7 @@ pub fn start_client(
 
     let chain_sender_for_state_sync = LateBoundSender::<ChainSenderForStateSync>::new();
     let client_sender_for_client = LateBoundSender::<ClientSenderForClient>::new();
+    let protocol_upgrade_schedule = get_protocol_upgrade_schedule(client_config.chain_id.as_str());
     let client = Client::new(
         clock.clone(),
         client_config,
@@ -170,10 +173,9 @@ pub fn start_client(
         state_sync_future_spawner,
         chain_sender_for_state_sync.as_multi_sender(),
         client_sender_for_client.as_multi_sender(),
-        PROTOCOL_UPGRADE_SCHEDULE.clone(),
+        protocol_upgrade_schedule,
     )
     .unwrap();
-    let resharding_handle = client.chain.resharding_manager.resharding_handle.clone();
 
     let client_sender_for_sync_jobs = LateBoundSender::<ClientSenderForSyncJobs>::new();
     let sync_jobs_actor = SyncJobsActor::new(client_sender_for_sync_jobs.as_multi_sender());
@@ -192,7 +194,8 @@ pub fn start_client(
     )
     .unwrap();
     let tx_pool = client_actor_inner.client.chunk_producer.sharded_tx_pool.clone();
-
+    let chunk_endorsement_tracker =
+        Arc::clone(&client_actor_inner.client.chunk_endorsement_tracker);
     let client_addr = ClientActor::start_in_arbiter(&client_arbiter_handle, move |_| {
         ActixWrapper::new(client_actor_inner)
     });
@@ -206,8 +209,8 @@ pub fn start_client(
     StartClientResult {
         client_actor: client_addr,
         client_arbiter_handle,
-        resharding_handle,
         tx_pool,
+        chunk_endorsement_tracker,
     }
 }
 
@@ -1098,10 +1101,12 @@ impl ClientActorInner {
                 continue;
             }
 
-            self.client.chunk_inclusion_tracker.prepare_chunk_headers_ready_for_inclusion(
-                prev_block_hash,
-                &mut self.client.chunk_endorsement_tracker,
-            )?;
+            {
+                self.client.chunk_inclusion_tracker.prepare_chunk_headers_ready_for_inclusion(
+                    prev_block_hash,
+                    &self.client.chunk_endorsement_tracker,
+                )?;
+            }
             let num_chunks = self
                 .client
                 .chunk_inclusion_tracker
@@ -1328,6 +1333,7 @@ impl ClientActorInner {
         };
 
         // If we produced the block, send it out before we apply the block.
+        self.client.chain.blocks_delay_tracker.mark_block_received(&block);
         self.network_adapter.send(PeerManagerMessageRequest::NetworkRequests(
             NetworkRequests::Block { block: block.clone() },
         ));
@@ -1346,8 +1352,14 @@ impl ClientActorInner {
         match error {
             near_chain::Error::ChunksMissing(_) => {
                 debug!(target: "client", "chunks missing");
-                // missing chunks were already handled in Client::process_block, we don't need to
-                // do anything here
+                // If block is missing chunks, it will be processed in
+                // `check_blocks_with_missing_chunks`.
+                Ok(())
+            }
+            near_chain::Error::BlockPendingOptimisticExecution => {
+                debug!(target: "client", "block pending optimistic execution");
+                // If block is pending optimistic execution, it will be
+                // processed in `postprocess_optimistic_block`.
                 Ok(())
             }
             _ => {
@@ -1373,8 +1385,13 @@ impl ClientActorInner {
         };
 
         // If we produced the optimistic block, send it out before we save it.
+        let tip = self.client.chain.head()?;
+        let targets = self.client.get_optimistic_block_targets(&tip)?;
         self.network_adapter.send(PeerManagerMessageRequest::NetworkRequests(
-            NetworkRequests::OptimisticBlock { optimistic_block: optimistic_block.clone() },
+            NetworkRequests::OptimisticBlock {
+                chunk_producers: targets,
+                optimistic_block: optimistic_block.clone(),
+            },
         ));
 
         // We’ve produced the optimistic block, mark it as done so we don't produce it again.
@@ -1391,7 +1408,7 @@ impl ClientActorInner {
         Ok(())
     }
 
-    fn send_chunks_metrics(&mut self, block: &Block) {
+    fn send_chunks_metrics(&self, block: &Block) {
         let chunks = block.chunks();
         for (chunk, &included) in chunks.iter_deprecated().zip(block.header().chunk_mask().iter()) {
             if included {
@@ -1934,15 +1951,6 @@ impl Handler<ChunkStateWitnessMessage> for ClientActorInner {
             self.client.process_chunk_state_witness(witness, raw_witness_size, None, signer)
         {
             tracing::error!(target: "client", ?err, "Error processing chunk state witness");
-        }
-    }
-}
-
-impl Handler<ChunkEndorsementMessage> for ClientActorInner {
-    #[perf]
-    fn handle(&mut self, msg: ChunkEndorsementMessage) {
-        if let Err(err) = self.client.chunk_endorsement_tracker.process_chunk_endorsement(msg.0) {
-            tracing::error!(target: "client", ?err, "Error processing chunk endorsement");
         }
     }
 }

@@ -19,7 +19,9 @@ use near_primitives::bandwidth_scheduler::BlockBandwidthRequests;
 use near_primitives::congestion_info::{
     BlockCongestionInfo, CongestionControl, CongestionInfo, ExtendedCongestionInfo,
 };
-use near_primitives::errors::{ActionErrorKind, FunctionCallError, TxExecutionError};
+use near_primitives::errors::{
+    ActionErrorKind, FunctionCallError, MissingTrieValue, TxExecutionError,
+};
 use near_primitives::hash::{CryptoHash, hash};
 use near_primitives::receipt::{ActionReceipt, Receipt, ReceiptEnum, ReceiptPriority, ReceiptV0};
 use near_primitives::shard_layout::{ShardLayout, ShardUId};
@@ -769,6 +771,61 @@ fn test_apply_deficit_gas_for_transfer() {
     assert_eq!(result.stats.balance.gas_deficit_amount, result.stats.balance.tx_burnt_amount * 9)
 }
 
+/// Apply a transfer receipt that was purchased at a higher gas price than
+/// current, then check that we burn the correct amount.
+#[test]
+fn test_apply_surplus_gas_for_transfer() {
+    let initial_balance = to_yocto(1_000_000);
+    let initial_locked = to_yocto(500_000);
+    let small_transfer = to_yocto(10_000);
+    let gas_limit = 10u64.pow(15);
+    let (runtime, tries, root, apply_state, _, epoch_info_provider) = setup_runtime(
+        vec![alice_account(), bob_account()],
+        initial_balance,
+        initial_locked,
+        gas_limit,
+    );
+    let gas_price = GAS_PRICE * 10;
+
+    let n = 1;
+    let mut receipts = generate_receipts(small_transfer, n);
+    if let ReceiptEnum::Action(action_receipt) = receipts.get_mut(0).unwrap().receipt_mut() {
+        action_receipt.gas_price = gas_price;
+    }
+
+    let result = runtime
+        .apply(
+            tries.get_trie_for_shard(ShardUId::single_shard(), root),
+            &None,
+            &apply_state,
+            &receipts,
+            SignedValidPeriodTransactions::empty(),
+            &epoch_info_provider,
+            Default::default(),
+        )
+        .unwrap();
+    let fees = &apply_state.config.fees;
+    let exec_gas = fees.fee(ActionCosts::new_action_receipt).exec_fee()
+        + fees.fee(ActionCosts::transfer).exec_fee();
+
+    let expected_burnt_amount = if fees.refund_gas_price_changes {
+        Balance::from(exec_gas) * GAS_PRICE
+    } else {
+        Balance::from(exec_gas) * gas_price
+    };
+    let expected_receipts = if fees.refund_gas_price_changes {
+        // refund the surplus
+        1
+    } else {
+        // don't refund the surplus
+        0
+    };
+
+    assert_eq!(result.stats.balance.gas_deficit_amount, 0);
+    assert_eq!(result.stats.balance.tx_burnt_amount, expected_burnt_amount);
+    assert_eq!(result.outgoing_receipts.len(), expected_receipts);
+}
+
 #[test]
 fn test_apply_deficit_gas_for_function_call_covered() {
     let initial_balance = to_yocto(1_000_000);
@@ -809,8 +866,16 @@ fn test_apply_deficit_gas_for_function_call_covered() {
         }),
     })];
     let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
-    let expected_gas_burnt_amount = Balance::from(expected_gas_burnt) * GAS_PRICE;
-    let expected_refund = total_receipt_cost - expected_gas_burnt_amount;
+    let expected_gas_burnt_amount = if apply_state.config.fees.refund_gas_price_changes {
+        Balance::from(expected_gas_burnt) * GAS_PRICE
+    } else {
+        Balance::from(expected_gas_burnt) * gas_price
+    };
+    // With gas refund penalties enabled, we should see a reduced refund value
+    let unspent_gas = (total_receipt_cost - expected_gas_burnt_amount) / gas_price;
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas as u64);
+    let expected_refund =
+        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty) * gas_price;
 
     let result = runtime
         .apply(
@@ -823,8 +888,15 @@ fn test_apply_deficit_gas_for_function_call_covered() {
             Default::default(),
         )
         .unwrap();
-    // We used part of the prepaid gas to paying extra fees.
-    assert_eq!(result.stats.balance.gas_deficit_amount, 0);
+    if apply_state.config.fees.refund_gas_price_changes {
+        // We used part of the prepaid gas to paying extra fees.
+        assert_eq!(result.stats.balance.gas_deficit_amount, 0);
+    } else {
+        assert_eq!(
+            result.stats.balance.gas_deficit_amount,
+            Balance::from(expected_gas_burnt) * (GAS_PRICE - gas_price)
+        );
+    }
     // The refund is less than the received amount.
     match result.outgoing_receipts[0].receipt() {
         ReceiptEnum::Action(ActionReceipt { actions, .. }) => {
@@ -876,8 +948,14 @@ fn test_apply_deficit_gas_for_function_call_partial() {
         }),
     })];
     let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
-    let expected_gas_burnt_amount = Balance::from(expected_gas_burnt) * GAS_PRICE;
-    let expected_deficit = expected_gas_burnt_amount - total_receipt_cost;
+    let expected_deficit = if apply_state.config.fees.refund_gas_price_changes {
+        // Used full prepaid gas, but it still not enough to cover deficit.
+        let expected_gas_burnt_amount = Balance::from(expected_gas_burnt) * GAS_PRICE;
+        expected_gas_burnt_amount - total_receipt_cost
+    } else {
+        // The "deficit" is simply the value change due to gas price changes
+        Balance::from(expected_gas_burnt) * (GAS_PRICE - gas_price)
+    };
 
     let result = runtime
         .apply(
@@ -890,10 +968,95 @@ fn test_apply_deficit_gas_for_function_call_partial() {
             Default::default(),
         )
         .unwrap();
-    // Used full prepaid gas, but it still not enough to cover deficit.
     assert_eq!(result.stats.balance.gas_deficit_amount, expected_deficit);
-    // Burnt all the fees + all prepaid gas.
-    assert_eq!(result.stats.balance.tx_burnt_amount, total_receipt_cost);
+    if apply_state.config.fees.refund_gas_price_changes {
+        // Burnt all the fees + all prepaid gas.
+        assert_eq!(result.stats.balance.tx_burnt_amount, total_receipt_cost);
+        assert_eq!(result.outgoing_receipts.len(), 0);
+    } else {
+        // The deficit does not affect refunds in this config, hence we expect a
+        // normal refund of the unspent gas. However, this is small enough to
+        // cancel out, so we add the refund cost to tx_burnt and expect no
+        // refund. Like in the other case, this ends up burning all gas and not
+        // refunding anything.
+        assert_eq!(result.outgoing_receipts.len(), 0);
+        assert_eq!(result.stats.balance.tx_burnt_amount, total_receipt_cost);
+    }
+}
+
+#[test]
+fn test_apply_surplus_gas_for_function_call() {
+    let initial_balance = to_yocto(1_000_000);
+    let initial_locked = to_yocto(500_000);
+    let gas_limit = 10u64.pow(15);
+    let (runtime, tries, root, apply_state, _, epoch_info_provider) = setup_runtime(
+        vec![alice_account(), bob_account()],
+        initial_balance,
+        initial_locked,
+        gas_limit,
+    );
+
+    let gas = 2 * 10u64.pow(14);
+    let gas_price = GAS_PRICE * 10;
+    let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
+        method_name: "hello".to_string(),
+        args: b"world".to_vec(),
+        gas,
+        deposit: 0,
+    }))];
+
+    let expected_gas_burnt = safe_add_gas(
+        apply_state.config.fees.fee(ActionCosts::new_action_receipt).exec_fee(),
+        total_prepaid_exec_fees(&apply_state.config, &actions, &alice_account()).unwrap(),
+    )
+    .unwrap();
+    let receipts = vec![Receipt::V0(ReceiptV0 {
+        predecessor_id: bob_account(),
+        receiver_id: alice_account(),
+        receipt_id: CryptoHash::default(),
+        receipt: ReceiptEnum::Action(ActionReceipt {
+            signer_id: bob_account(),
+            signer_public_key: PublicKey::empty(KeyType::ED25519),
+            gas_price,
+            output_data_receivers: vec![],
+            input_data_ids: vec![],
+            actions,
+        }),
+    })];
+    let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
+    let expected_gas_burnt_amount = if apply_state.config.fees.refund_gas_price_changes {
+        Balance::from(expected_gas_burnt) * GAS_PRICE
+    } else {
+        Balance::from(expected_gas_burnt) * gas_price
+    };
+
+    // With gas refund penalties enabled, we should see a reduced refund value
+    let unspent_gas = (total_receipt_cost - expected_gas_burnt_amount) / gas_price;
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas as u64);
+    let expected_refund =
+        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty) * gas_price;
+
+    let result = runtime
+        .apply(
+            tries.get_trie_for_shard(ShardUId::single_shard(), root),
+            &None,
+            &apply_state,
+            &receipts,
+            SignedValidPeriodTransactions::empty(),
+            &epoch_info_provider,
+            Default::default(),
+        )
+        .unwrap();
+    assert_eq!(result.stats.balance.gas_deficit_amount, 0, "expected surplus");
+    // The refund is less than the received amount.
+    match result.outgoing_receipts[0].receipt() {
+        ReceiptEnum::Action(ActionReceipt { actions, .. }) => {
+            assert!(
+                matches!(actions[0], Action::Transfer(TransferAction { deposit }) if deposit == expected_refund)
+            );
+        }
+        _ => unreachable!(),
+    };
 }
 
 #[test]
@@ -1256,12 +1419,18 @@ fn test_main_storage_proof_size_soft_limit() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
 }
 
@@ -1374,12 +1543,18 @@ fn test_exclude_contract_code_from_witness() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
 }
 
@@ -1479,12 +1654,18 @@ fn test_exclude_contract_code_from_witness_with_failed_call() {
     let code_key = TrieKey::ContractCode { account_id: alice_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
     let code_key = TrieKey::ContractCode { account_id: bob_account() };
     assert_matches!(
         storage.get(&code_key.to_vec(), AccessOptions::DEFAULT),
-        Err(StorageError::MissingTrieValue(MissingTrieValueContext::TrieMemoryPartialStorage, _))
+        Err(StorageError::MissingTrieValue(MissingTrieValue {
+            context: MissingTrieValueContext::TrieMemoryPartialStorage,
+            hash: _
+        }))
     );
 }
 

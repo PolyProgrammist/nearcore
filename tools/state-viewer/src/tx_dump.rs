@@ -1,5 +1,4 @@
 use near_chain::ChainStore;
-use near_chain::ChainStoreAccess;
 use near_primitives::account::id::AccountId;
 use near_primitives::block::Block;
 use near_primitives::transaction::SignedTransaction;
@@ -22,8 +21,7 @@ pub fn dump_tx_from_block(
                 .filter(|signed_transaction| {
                     should_include_signed_transaction(signed_transaction, select_account_ids)
                 })
-                .cloned()
-                .collect::<Vec<_>>(),
+                .cloned(),
         );
     }
     res

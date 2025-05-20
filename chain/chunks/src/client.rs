@@ -190,8 +190,16 @@ mod tests {
     #[test]
     fn test_transaction_pool_resharding() {
         init_test_logger();
-        let old_shard_layout = ShardLayout::get_simple_nightshade_layout();
-        let new_shard_layout = ShardLayout::get_simple_nightshade_layout_v2();
+
+        let boundary_accounts = ["aurora", "aurora-0", "kkuuue2akv_1630967379.near"]
+            .iter()
+            .map(|a| a.parse().unwrap())
+            .collect();
+        let old_shard_layout = ShardLayout::multi_shard_custom(boundary_accounts, 3);
+        let new_shard_layout = ShardLayout::derive_shard_layout(
+            &old_shard_layout,
+            "tge-lockup.sweat".parse().unwrap(),
+        );
 
         let mut pool = ShardedTransactionPool::new(TEST_SEED, None);
 
@@ -249,7 +257,7 @@ mod tests {
         tracing::info!("checking the pool after resharding");
         {
             let shard_ids: Vec<_> = new_shard_layout.shard_ids().collect();
-            for &shard_id in shard_ids.iter() {
+            for &shard_id in &shard_ids {
                 let shard_uid = ShardUId::new(new_shard_layout.version(), shard_id);
                 let pool = pool.pool_for_shard(shard_uid);
                 let pool_len = pool.len();
