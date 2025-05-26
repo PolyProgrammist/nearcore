@@ -19,6 +19,12 @@ pub enum Parameter {
     // Gas economics config
     BurntGasReward,
     PessimisticGasPriceInflation,
+    /// Whether we calculate in the gas price changes when refunding gas.
+    RefundGasPriceChanges,
+    /// Ratio of refunded gas that gets taxed.
+    GasRefundPenalty,
+    /// Minimum gas refund tax.
+    MinGasRefundPenalty,
 
     /// Stateless validation config
     /// Size limit for storage proof generated while executing receipts in a chunk.
@@ -228,6 +234,8 @@ pub enum Parameter {
 
     ActionUseGlobalContract,
     ActionUseGlobalContractPerIdentifierByte,
+    SaturatingFloatToInt,
+    GlobalContractHostFns,
 }
 
 #[derive(

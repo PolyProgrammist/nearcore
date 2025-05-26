@@ -16,7 +16,7 @@ use near_primitives::network::PeerId;
 use near_primitives::shard_layout::ShardLayout;
 use near_primitives::test_utils::create_test_signer;
 use near_primitives::types::AccountId;
-use near_primitives::version::{PROTOCOL_UPGRADE_SCHEDULE, PROTOCOL_VERSION};
+use near_primitives::version::{PROTOCOL_VERSION, get_protocol_upgrade_schedule};
 use near_store::adapter::StoreAdapter;
 
 use crate::utils::ONE_NEAR;
@@ -49,11 +49,14 @@ fn test_client_with_simple_test_loop() {
     let accounts =
         (0..100).map(|i| format!("account{}", i).parse().unwrap()).collect::<Vec<AccountId>>();
 
+    let boundary_accounts =
+        ["account3", "account5", "account7"].iter().map(|&a| a.parse().unwrap()).collect();
+
     let genesis = TestGenesisBuilder::new()
         .genesis_time_from_clock(&test_loop.clock())
         .protocol_version(PROTOCOL_VERSION)
         .genesis_height(10000)
-        .shard_layout(ShardLayout::simple_v1(&["account3", "account5", "account7"]))
+        .shard_layout(ShardLayout::multi_shard_custom(boundary_accounts, 1))
         .transaction_validity_period(1000)
         .epoch_length(10)
         .validators_spec(ValidatorsSpec::desired_roles(&["account0"], &[]))
@@ -83,6 +86,7 @@ fn test_client_with_simple_test_loop() {
 
     let sync_jobs_actor = SyncJobsActor::new(client_adapter.as_multi_sender());
 
+    let protocol_upgrade_schedule = get_protocol_upgrade_schedule(&chain_genesis.chain_id);
     let client = Client::new(
         test_loop.clock(),
         client_config,
@@ -102,7 +106,7 @@ fn test_client_with_simple_test_loop() {
         Arc::new(test_loop.future_spawner("node0")),
         noop().into_multi_sender(),
         client_adapter.as_multi_sender(),
-        PROTOCOL_UPGRADE_SCHEDULE.clone(),
+        protocol_upgrade_schedule,
     )
     .unwrap();
 

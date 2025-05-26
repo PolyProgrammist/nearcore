@@ -10,11 +10,13 @@ use near_chunks::client::ShardedTransactionPool;
 use near_epoch_manager::EpochManagerAdapter;
 use near_epoch_manager::shard_assignment::account_id_to_shard_id;
 use near_epoch_manager::shard_tracker::ShardTracker;
+use near_network::client::ChunkEndorsementMessage;
 use near_network::client::ProcessTxRequest;
 use near_network::client::ProcessTxResponse;
 use near_network::types::NetworkRequests;
 use near_network::types::PeerManagerAdapter;
 use near_network::types::PeerManagerMessageRequest;
+use near_performance_metrics_macros::perf;
 use near_pool::InsertTransactionResult;
 use near_primitives::stateless_validation::ChunkProductionKey;
 use near_primitives::transaction::SignedTransaction;
@@ -25,35 +27,47 @@ use near_primitives::unwrap_or_return;
 use near_primitives::validator_signer::ValidatorSigner;
 use near_store::adapter::StoreAdapter;
 use near_store::adapter::chain_store::ChainStoreAdapter;
+use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use crate::metrics;
+use crate::stateless_validation::chunk_endorsement::ChunkEndorsementTracker;
 
-pub type TxRequestHandlerActor = SyncActixWrapper<TxRequestHandler>;
+pub type RpcHandlerActor = SyncActixWrapper<RpcHandler>;
 
-impl Handler<ProcessTxRequest> for TxRequestHandler {
+impl Handler<ProcessTxRequest> for RpcHandler {
     fn handle(&mut self, msg: ProcessTxRequest) -> ProcessTxResponse {
         let ProcessTxRequest { transaction, is_forwarded, check_only } = msg;
         self.process_tx(transaction, is_forwarded, check_only)
     }
 }
 
-impl messaging::Actor for TxRequestHandler {}
+impl Handler<ChunkEndorsementMessage> for RpcHandler {
+    #[perf]
+    fn handle(&mut self, msg: ChunkEndorsementMessage) {
+        if let Err(err) = self.chunk_endorsement_tracker.process_chunk_endorsement(msg.0) {
+            tracing::error!(target: "client", ?err, "Error processing chunk endorsement");
+        }
+    }
+}
 
-pub fn spawn_tx_request_handler_actor(
-    config: TxRequestHandlerConfig,
+impl messaging::Actor for RpcHandler {}
+
+pub fn spawn_rpc_handler_actor(
+    config: RpcHandlerConfig,
     tx_pool: Arc<Mutex<ShardedTransactionPool>>,
+    chunk_endorsement_tracker: Arc<ChunkEndorsementTracker>,
     epoch_manager: Arc<dyn EpochManagerAdapter>,
     shard_tracker: ShardTracker,
     validator_signer: MutableValidatorSigner,
     runtime: Arc<dyn RuntimeAdapter>,
     network_adapter: PeerManagerAdapter,
-) -> actix::Addr<TxRequestHandlerActor> {
-    let actor = TxRequestHandler::new(
+) -> actix::Addr<RpcHandlerActor> {
+    let actor = RpcHandler::new(
         config.clone(),
         tx_pool,
+        chunk_endorsement_tracker,
         epoch_manager,
         shard_tracker,
         validator_signer,
@@ -64,18 +78,24 @@ pub fn spawn_tx_request_handler_actor(
 }
 
 #[derive(Clone)]
-pub struct TxRequestHandlerConfig {
+pub struct RpcHandlerConfig {
     pub handler_threads: usize,
     pub tx_routing_height_horizon: u64,
     pub epoch_length: u64,
     pub transaction_validity_period: BlockHeightDelta,
 }
 
-/// Accepts `process_tx` requests. Pushes the incoming transactions to the pool.
+/// Accepts and processes rpc requests (`process_tx`, etc) and does some preprocessing on incoming data.
+///
+/// Supposed to run multithreaded.
+/// Connects to the Client actor via (thread-safe) queues and pools to pass the data for consumption.
 #[derive(Clone)]
-pub struct TxRequestHandler {
-    config: TxRequestHandlerConfig,
+pub struct RpcHandler {
+    config: RpcHandlerConfig,
+
     tx_pool: Arc<Mutex<ShardedTransactionPool>>,
+    chunk_endorsement_tracker: Arc<ChunkEndorsementTracker>,
+
     chain_store: ChainStoreAdapter,
     epoch_manager: Arc<dyn EpochManagerAdapter>,
     shard_tracker: ShardTracker,
@@ -84,10 +104,11 @@ pub struct TxRequestHandler {
     network_adapter: PeerManagerAdapter,
 }
 
-impl TxRequestHandler {
+impl RpcHandler {
     pub fn new(
-        config: TxRequestHandlerConfig,
+        config: RpcHandlerConfig,
         tx_pool: Arc<Mutex<ShardedTransactionPool>>,
+        chunk_endorsement_tracker: Arc<ChunkEndorsementTracker>,
         epoch_manager: Arc<dyn EpochManagerAdapter>,
         shard_tracker: ShardTracker,
         validator_signer: MutableValidatorSigner,
@@ -95,9 +116,11 @@ impl TxRequestHandler {
         network_adapter: PeerManagerAdapter,
     ) -> Self {
         let chain_store = runtime.store().chain_store();
+
         Self {
             config,
             tx_pool,
+            chunk_endorsement_tracker,
             validator_signer,
             chain_store,
             epoch_manager,
@@ -180,38 +203,40 @@ impl TxRequestHandler {
             self.shard_tracker.will_care_about_shard(me, &head.last_block_hash, shard_id, true);
 
         if cares_about_shard || will_care_about_shard {
-            let state_root =
-                match self.chain_store.get_chunk_extra(&head.last_block_hash, &shard_uid) {
-                    Ok(chunk_extra) => *chunk_extra.state_root(),
-                    Err(_) => {
-                        // Not being able to fetch a state root most likely implies that we haven't
-                        //     caught up with the next epoch yet.
-                        if is_forwarded {
-                            return Err(near_client_primitives::types::Error::Other(
-                                "Node has not caught up yet".to_string(),
-                            ));
-                        } else {
-                            self.forward_tx(&epoch_id, signed_tx, signer)?;
-                            return Ok(ProcessTxResponse::RequestRouted);
+            if !cfg!(feature = "protocol_feature_spice") {
+                let state_root =
+                    match self.chain_store.get_chunk_extra(&head.last_block_hash, &shard_uid) {
+                        Ok(chunk_extra) => *chunk_extra.state_root(),
+                        Err(_) => {
+                            // Not being able to fetch a state root most likely implies that we haven't
+                            //     caught up with the next epoch yet.
+                            if is_forwarded {
+                                return Err(near_client_primitives::types::Error::Other(
+                                    "Node has not caught up yet".to_string(),
+                                ));
+                            } else {
+                                self.forward_tx(&epoch_id, signed_tx, signer)?;
+                                return Ok(ProcessTxResponse::RequestRouted);
+                            }
                         }
-                    }
-                };
-            if let Err(err) = self.runtime.can_verify_and_charge_tx(
-                &shard_layout,
-                gas_price,
-                state_root,
-                &validated_tx,
-                protocol_version,
-            ) {
-                tracing::debug!(target: "client", ?err, "Invalid tx");
-                return Ok(ProcessTxResponse::InvalidTx(err));
+                    };
+                if let Err(err) = self.runtime.can_verify_and_charge_tx(
+                    &shard_layout,
+                    gas_price,
+                    state_root,
+                    &validated_tx,
+                    protocol_version,
+                ) {
+                    tracing::debug!(target: "client", ?err, "Invalid tx");
+                    return Ok(ProcessTxResponse::InvalidTx(err));
+                }
             }
             if check_only {
                 return Ok(ProcessTxResponse::ValidTx);
             }
             // Transactions only need to be recorded if the node is a validator.
             if me.is_some() {
-                let mut pool = self.tx_pool.lock().unwrap();
+                let mut pool = self.tx_pool.lock();
                 match pool.insert_transaction(shard_uid, validated_tx) {
                     InsertTransactionResult::Success => {
                         tracing::trace!(target: "client", ?shard_uid, tx_hash = ?signed_tx.get_hash(), "Recorded a transaction.");

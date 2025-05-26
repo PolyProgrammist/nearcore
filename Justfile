@@ -22,6 +22,7 @@ test-ci *FLAGS: check-cargo-fmt \
                 python-style-checks \
                 check-cargo-deny \
                 check-themis \
+                check-cargo-machete \
                 check-cargo-clippy \
                 check-non-default \
                 check-cargo-udeps \
@@ -126,6 +127,9 @@ install-rustc-nightly:
 check-cargo-udeps: install-rustc-nightly
     env CARGO_TARGET_DIR={{justfile_directory()}}/target/udeps RUSTFLAGS='--cfg=udeps --cap-lints=allow' cargo +nightly udeps
 
+check-cargo-machete:
+    cargo machete
+
 # lychee-based url validity checks
 check-lychee:
     # This is not actually run in CI. GITHUB_TOKEN can still be set locally by people who want
@@ -176,3 +180,6 @@ check-publishable-separately *OPTIONS:
     done
     echo -e $REPORT
     exit $FINAL_RESULT
+
+openapi-spec:
+    cargo run -p near-jsonrpc-openapi-spec > {{ justfile_directory() }}/new-openapi.json && cmp {{ justfile_directory() }}/new-openapi.json chain/jsonrpc/openapi/openapi.json

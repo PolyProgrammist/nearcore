@@ -3,7 +3,10 @@
 ## [unreleased]
 
 ### Protocol Changes
-**No Changes**
+
+* When the protocol update version voting takes place, validators that did not upgrade to the latest version will be scheduled for removal (aka kickout) in the epoch the new version takes effect. This helps avoid missed blocks in the first epoch of the new version, as un-upgraded validators would produce invalid blocks. Technically this is a protocol change as it impacts the validator set, however it will take effect during the next version upgrade therefore does not require its own protocol version. [#13375](https://github.com/near/nearcore/issues/13375)
+* Implement [NEP-536](https://github.com/near/NEPs/pull/536): Reduce the number of refund receipts by adding removing pessimistic gas pricing. Also introduce a gas refund penalty but set it to 0 to avoid potential negative impact. (#13397)
+* Implemented p2p sync for state sync headers. (#13377)
 
 ### Non-protocol Changes
 **No Changes**
@@ -14,6 +17,7 @@
 
 * Implemented support for global contracts: [NEP-591](https://github.com/near/NEPs/pull/591)
 * Implemented Optimistic Block to remove doubled chunk execution latency from block & chunk production flow [#10584](https://github.com/near/nearcore/issues/10584)
+* Changed receipt id computation to enable chunk execution based on Optimistic Block. More specifically, primitive [`create_hash_upgradable`](https://github.com/near/nearcore/blob/700735b/core/primitives/src/utils.rs#L292-L309) is changed to use `block_height` instead of `extra_hash`.
 
 ### Non-protocol Changes
 **No Changes**

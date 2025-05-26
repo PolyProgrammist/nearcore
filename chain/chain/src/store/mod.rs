@@ -13,7 +13,8 @@ use near_primitives::merkle::{MerklePath, PartialMerkleTree};
 use near_primitives::receipt::Receipt;
 use near_primitives::shard_layout::{ShardLayout, ShardUId, get_block_shard_uid};
 use near_primitives::sharding::{
-    ChunkHash, EncodedShardChunk, PartialEncodedChunk, ReceiptProof, ShardChunk, StateSyncInfo,
+    ArcedShardChunk, ChunkHash, EncodedShardChunk, PartialEncodedChunk, ReceiptProof, ShardChunk,
+    StateSyncInfo,
 };
 use near_primitives::state_sync::StateSyncDumpProgress;
 use near_primitives::stateless_validation::contract_distribution::ContractUpdates;
@@ -91,8 +92,6 @@ pub trait ChainStoreAccess {
     fn largest_target_height(&self) -> Result<BlockHeight, Error>;
     /// Get full block.
     fn get_block(&self, h: &CryptoHash) -> Result<Block, Error>;
-    /// Get full chunk.
-    fn get_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<ShardChunk>, Error>;
     /// Get partial chunk.
     fn get_partial_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<PartialEncodedChunk>, Error>;
     /// Does this full block exist?
@@ -868,11 +867,6 @@ impl ChainStoreAccess for ChainStore {
         ChainStoreAdapter::get_block(self, h)
     }
 
-    /// Get full chunk.
-    fn get_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<ShardChunk>, Error> {
-        ChainStoreAdapter::get_chunk(self, chunk_hash)
-    }
-
     /// Get partial chunk.
     fn get_partial_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<PartialEncodedChunk>, Error> {
         ChainStoreAdapter::get_partial_chunk(self, chunk_hash)
@@ -1004,7 +998,7 @@ pub(crate) struct ChainStoreCacheUpdate {
     block: Option<Block>,
     headers: HashMap<CryptoHash, BlockHeader>,
     chunk_extras: HashMap<(CryptoHash, ShardUId), Arc<ChunkExtra>>,
-    chunks: HashMap<ChunkHash, Arc<ShardChunk>>,
+    chunks: HashMap<ChunkHash, Arc<ArcedShardChunk>>,
     partial_chunks: HashMap<ChunkHash, Arc<PartialEncodedChunk>>,
     block_hash_per_height: HashMap<BlockHeight, HashMap<EpochId, HashSet<CryptoHash>>>,
     pub(crate) height_to_hashes: HashMap<BlockHeight, Option<CryptoHash>>,
@@ -1070,6 +1064,14 @@ impl<'a> ChainStoreUpdate<'a> {
             add_state_sync_infos: vec![],
             remove_state_sync_infos: vec![],
             chunk_apply_stats: HashMap::default(),
+        }
+    }
+
+    pub fn get_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<ArcedShardChunk>, Error> {
+        if let Some(arced_chunk) = self.chain_store_cache_update.chunks.get(chunk_hash) {
+            Ok(Arc::clone(arced_chunk))
+        } else {
+            self.chain_store.get_chunk(chunk_hash).map(ArcedShardChunk::from).map(Arc::new)
         }
     }
 }
@@ -1279,14 +1281,6 @@ impl<'a> ChainStoreAccess for ChainStoreUpdate<'a> {
             Ok(Arc::clone(receipt_proofs))
         } else {
             self.chain_store.get_incoming_receipts(hash, shard_id)
-        }
-    }
-
-    fn get_chunk(&self, chunk_hash: &ChunkHash) -> Result<Arc<ShardChunk>, Error> {
-        if let Some(chunk) = self.chain_store_cache_update.chunks.get(chunk_hash) {
-            Ok(Arc::clone(chunk))
-        } else {
-            self.chain_store.get_chunk(chunk_hash)
         }
     }
 
@@ -1507,17 +1501,18 @@ impl<'a> ChainStoreUpdate<'a> {
     }
 
     pub fn save_chunk(&mut self, chunk: ShardChunk) {
-        for transaction in chunk.to_transactions() {
-            self.chain_store_cache_update
-                .transactions
-                .insert(transaction.get_hash(), Arc::new(transaction.clone()));
+        let arced_chunk = ArcedShardChunk::from(chunk);
+        for tx in arced_chunk.to_transactions() {
+            self.chain_store_cache_update.transactions.insert(tx.get_hash(), Arc::clone(tx));
         }
-        for receipt in chunk.prev_outgoing_receipts() {
+        for receipt in arced_chunk.to_prev_outgoing_receipts() {
             self.chain_store_cache_update
                 .receipts
-                .insert(*receipt.receipt_id(), Arc::new(receipt.clone()));
+                .insert(*receipt.receipt_id(), Arc::clone(receipt));
         }
-        self.chain_store_cache_update.chunks.insert(chunk.chunk_hash(), Arc::new(chunk));
+        self.chain_store_cache_update
+            .chunks
+            .insert(arced_chunk.to_chunk_hash(), Arc::new(arced_chunk));
     }
 
     pub fn save_partial_chunk(&mut self, partial_chunk: Arc<PartialEncodedChunk>) {
@@ -1780,7 +1775,7 @@ impl<'a> ChainStoreUpdate<'a> {
             }
             // This is a BTreeMap because the update_sync_hashes() calls below must be done in order of height
             let mut headers_by_height: BTreeMap<BlockHeight, Vec<&BlockHeader>> = BTreeMap::new();
-            for (hash, header) in self.chain_store_cache_update.headers.iter() {
+            for (hash, header) in &self.chain_store_cache_update.headers {
                 if self.chain_store.get_block_header(hash).is_ok() {
                     // No need to add same Header once again
                     continue;
@@ -1805,7 +1800,7 @@ impl<'a> ChainStoreUpdate<'a> {
                 }
             }
             for ((block_hash, shard_uid), chunk_extra) in
-                self.chain_store_cache_update.chunk_extras.iter()
+                &self.chain_store_cache_update.chunk_extras
             {
                 store_update.set_ser(
                     DBCol::ChunkExtra,
@@ -1820,7 +1815,7 @@ impl<'a> ChainStoreUpdate<'a> {
 
             let mut chunk_hashes_by_height: HashMap<BlockHeight, HashSet<ChunkHash>> =
                 HashMap::new();
-            for (chunk_hash, chunk) in self.chain_store_cache_update.chunks.iter() {
+            for (chunk_hash, chunk) in &self.chain_store_cache_update.chunks {
                 if self.chain_store.chunk_exists(chunk_hash)? {
                     // No need to add same Chunk once again
                     continue;
@@ -1843,7 +1838,7 @@ impl<'a> ChainStoreUpdate<'a> {
                 };
 
                 // Increase transaction refcounts for all included txs
-                for tx in chunk.to_transactions().iter() {
+                for tx in chunk.to_transactions() {
                     let bytes = borsh::to_vec(&tx).expect("Borsh cannot fail");
                     store_update.increment_refcount(
                         DBCol::Transactions,
@@ -1861,7 +1856,7 @@ impl<'a> ChainStoreUpdate<'a> {
                     &hash_set,
                 )?;
             }
-            for (chunk_hash, partial_chunk) in self.chain_store_cache_update.partial_chunks.iter() {
+            for (chunk_hash, partial_chunk) in &self.chain_store_cache_update.partial_chunks {
                 store_update.insert_ser(
                     DBCol::PartialChunks,
                     chunk_hash.as_ref(),
@@ -1884,18 +1879,18 @@ impl<'a> ChainStoreUpdate<'a> {
             }
         }
 
-        for (height, hash) in self.chain_store_cache_update.height_to_hashes.iter() {
+        for (height, hash) in &self.chain_store_cache_update.height_to_hashes {
             if let Some(hash) = hash {
                 store_update.set_ser(DBCol::BlockHeight, &index_to_bytes(*height), hash)?;
             } else {
                 store_update.delete(DBCol::BlockHeight, &index_to_bytes(*height));
             }
         }
-        for (block_hash, next_hash) in self.chain_store_cache_update.next_block_hashes.iter() {
+        for (block_hash, next_hash) in &self.chain_store_cache_update.next_block_hashes {
             store_update.set_ser(DBCol::NextBlockHashes, block_hash.as_ref(), next_hash)?;
         }
         for (epoch_hash, light_client_block) in
-            self.chain_store_cache_update.epoch_light_client_blocks.iter()
+            &self.chain_store_cache_update.epoch_light_client_blocks
         {
             store_update.set_ser(
                 DBCol::EpochLightClientBlocks,
@@ -1909,7 +1904,7 @@ impl<'a> ChainStoreUpdate<'a> {
                     .entered();
 
             for ((block_hash, shard_id), receipt) in
-                self.chain_store_cache_update.outgoing_receipts.iter()
+                &self.chain_store_cache_update.outgoing_receipts
             {
                 store_update.set_ser(
                     DBCol::OutgoingReceipts,
@@ -1918,7 +1913,7 @@ impl<'a> ChainStoreUpdate<'a> {
                 )?;
             }
             for ((block_hash, shard_id), receipt) in
-                self.chain_store_cache_update.incoming_receipts.iter()
+                &self.chain_store_cache_update.incoming_receipts
             {
                 store_update.set_ser(
                     DBCol::IncomingReceipts,
@@ -1932,7 +1927,7 @@ impl<'a> ChainStoreUpdate<'a> {
             let _span = tracing::trace_span!(target: "store", "write_outcomes").entered();
 
             for ((outcome_id, block_hash), outcome_with_proof) in
-                self.chain_store_cache_update.outcomes.iter()
+                &self.chain_store_cache_update.outcomes
             {
                 store_update.insert_ser(
                     DBCol::TransactionResultForBlock,
@@ -1940,7 +1935,7 @@ impl<'a> ChainStoreUpdate<'a> {
                     &outcome_with_proof,
                 )?;
             }
-            for ((block_hash, shard_id), ids) in self.chain_store_cache_update.outcome_ids.iter() {
+            for ((block_hash, shard_id), ids) in &self.chain_store_cache_update.outcome_ids {
                 store_update.set_ser(
                     DBCol::OutcomeIds,
                     &get_block_shard_id(block_hash, *shard_id),
@@ -1949,17 +1944,13 @@ impl<'a> ChainStoreUpdate<'a> {
             }
         }
 
-        for (block_hash, refcount) in self.chain_store_cache_update.block_refcounts.iter() {
+        for (block_hash, refcount) in &self.chain_store_cache_update.block_refcounts {
             store_update.set_ser(DBCol::BlockRefCount, block_hash.as_ref(), refcount)?;
         }
-        for (block_hash, block_merkle_tree) in
-            self.chain_store_cache_update.block_merkle_tree.iter()
-        {
+        for (block_hash, block_merkle_tree) in &self.chain_store_cache_update.block_merkle_tree {
             store_update.set_ser(DBCol::BlockMerkleTree, block_hash.as_ref(), block_merkle_tree)?;
         }
-        for (block_ordinal, block_hash) in
-            self.chain_store_cache_update.block_ordinal_to_hash.iter()
-        {
+        for (block_ordinal, block_hash) in &self.chain_store_cache_update.block_ordinal_to_hash {
             store_update.set_ser(
                 DBCol::BlockOrdinal,
                 &index_to_bytes(*block_ordinal),
@@ -2069,17 +2060,17 @@ impl<'a> ChainStoreUpdate<'a> {
         for hash in self.remove_state_sync_infos.drain(..) {
             store_update.delete(DBCol::StateDlInfos, hash.as_ref());
         }
-        for (chunk_hash, chunk) in self.chain_store_cache_update.invalid_chunks.iter() {
+        for (chunk_hash, chunk) in &self.chain_store_cache_update.invalid_chunks {
             store_update.insert_ser(DBCol::InvalidChunks, chunk_hash.as_ref(), chunk)?;
         }
-        for block_height in self.chain_store_cache_update.processed_block_heights.iter() {
+        for block_height in &self.chain_store_cache_update.processed_block_heights {
             store_update.set_ser(
                 DBCol::ProcessedBlockHeights,
                 &index_to_bytes(*block_height),
                 &(),
             )?;
         }
-        for ((block_hash, shard_id), stats) in self.chunk_apply_stats.iter() {
+        for ((block_hash, shard_id), stats) in &self.chunk_apply_stats {
             store_update.set_ser(
                 DBCol::ChunkApplyStats,
                 &get_block_shard_id(block_hash, *shard_id),

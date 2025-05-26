@@ -27,15 +27,16 @@ use near_primitives::stateless_validation::state_witness::{
     ChunkStateWitness, EncodedChunkStateWitness,
 };
 use near_primitives::types::chunk_extra::ChunkExtra;
-use near_primitives::types::{AccountId, ProtocolVersion, ShardId, ShardIndex};
+use near_primitives::types::{AccountId, ShardId, ShardIndex};
 use near_primitives::utils::compression::CompressedData;
 use near_store::flat::BlockInfo;
-use near_store::trie::AccessOptions;
 use near_store::trie::ops::resharding::RetainMode;
 use near_store::{PartialStorage, Trie};
+use node_runtime::SignedValidPeriodTransactions;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[allow(clippy::large_enum_variant)]
@@ -360,23 +361,21 @@ pub fn pre_validate_chunk_state_witness(
             .block_congestion_info()
             .get(&last_chunk_shard_id)
             .map(|info| info.congestion_info);
-        let genesis_protocol_version = epoch_manager.get_epoch_protocol_version(&epoch_id)?;
-        let chunk_extra = chain.genesis_chunk_extra(
-            &shard_layout,
-            last_chunk_shard_id,
-            genesis_protocol_version,
-            congestion_info,
-        )?;
+        let chunk_extra =
+            chain.genesis_chunk_extra(&shard_layout, last_chunk_shard_id, congestion_info)?;
         MainTransition::Genesis {
             chunk_extra,
             block_hash: *last_chunk_block.hash(),
             shard_id: last_chunk_shard_id,
         }
     } else {
+        let transactions = SignedValidPeriodTransactions::new(
+            state_witness.transactions.clone(),
+            transaction_validity_check_results,
+        );
         MainTransition::NewChunk(NewChunkData {
             chunk_header: last_chunk_block.chunks().get(last_chunk_shard_index).unwrap().clone(),
-            transactions: state_witness.transactions.clone(),
-            transaction_validity_check_results,
+            transactions,
             receipts: receipts_to_apply,
             block: Chain::get_apply_chunk_block_context(
                 last_chunk_block,
@@ -534,7 +533,7 @@ pub fn validate_chunk_state_witness(
     let shard_uid = shard_id_to_uid(epoch_manager, shard_id, &epoch_id)?;
     let protocol_version = epoch_manager.get_epoch_protocol_version(&epoch_id)?;
     let cache_result = {
-        let mut shard_cache = main_state_transition_cache.lock().unwrap();
+        let mut shard_cache = main_state_transition_cache.lock();
         shard_cache
             .get_mut(&witness_chunk_shard_uid)
             .and_then(|cache| cache.get(&block_hash).cloned())
@@ -552,8 +551,7 @@ pub fn validate_chunk_state_witness(
                     runtime_adapter,
                 )?;
                 let outgoing_receipts = std::mem::take(&mut main_apply_result.outgoing_receipts);
-                let chunk_extra =
-                    apply_result_to_chunk_extra(protocol_version, main_apply_result, &chunk_header);
+                let chunk_extra = apply_result_to_chunk_extra(main_apply_result, &chunk_header);
 
                 (chunk_extra, outgoing_receipts)
             }
@@ -587,7 +585,7 @@ pub fn validate_chunk_state_witness(
     };
     // Save main state transition result to cache.
     {
-        let mut shard_cache = main_state_transition_cache.lock().unwrap();
+        let mut shard_cache = main_state_transition_cache.lock();
         let cache = shard_cache.entry(witness_chunk_shard_uid).or_insert_with(|| {
             LruCache::new(NonZeroUsize::new(NUM_WITNESS_RESULT_CACHE_ENTRIES).unwrap())
         });
@@ -661,17 +659,14 @@ pub fn validate_chunk_state_witness(
                     &parent_shard_layout,
                     parent_congestion_info,
                     &child_shard_layout,
-                    child_shard_uid,
+                    &child_shard_uid,
                     retain_mode,
                 )?;
 
-                let new_root = parent_trie.retain_split_shard(
-                    &boundary_account,
-                    retain_mode,
-                    AccessOptions::DEFAULT,
-                )?;
+                let trie_changes =
+                    parent_trie.retain_split_shard(&boundary_account, retain_mode)?;
 
-                (child_shard_uid, new_root, child_congestion_info)
+                (child_shard_uid, trie_changes.new_root, child_congestion_info)
             }
         };
 
@@ -703,13 +698,11 @@ pub fn validate_chunk_state_witness(
 }
 
 pub fn apply_result_to_chunk_extra(
-    protocol_version: ProtocolVersion,
     apply_result: ApplyChunkResult,
     chunk: &ShardChunkHeader,
 ) -> ChunkExtra {
     let (outcome_root, _) = ApplyChunkResult::compute_outcomes_proof(&apply_result.outcomes);
     ChunkExtra::new(
-        protocol_version,
         &apply_result.new_root,
         outcome_root,
         apply_result.validator_proposals,

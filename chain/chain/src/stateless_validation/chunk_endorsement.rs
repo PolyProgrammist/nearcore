@@ -156,7 +156,6 @@ pub fn validate_chunk_endorsements_in_block(
 }
 
 /// Validates the [`ChunkEndorsementBitmap`] in the [`BlockHeader`] if it is present, otherwise returns an error.
-/// This function must be called only if ChunkEndorsementInBlockHeader feature is enabled.
 pub fn validate_chunk_endorsements_in_header(
     epoch_manager: &dyn EpochManagerAdapter,
     header: &BlockHeader,
@@ -178,7 +177,7 @@ pub fn validate_chunk_endorsements_in_header(
         )));
     }
     let chunk_mask = header.chunk_mask();
-    for shard_id in shard_ids.into_iter() {
+    for shard_id in shard_ids {
         let shard_index = shard_layout.get_shard_index(shard_id)?;
         // For old chunks, we optimize the block and its header by not including the chunk endorsements and
         // corresponding bitmaps. Thus, we expect that the bitmap is empty for shard with no new chunk.

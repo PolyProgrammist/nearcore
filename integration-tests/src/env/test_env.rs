@@ -5,13 +5,12 @@ use near_chain::near_chain_primitives::error::QueryError;
 use near_chain::stateless_validation::processing_tracker::{
     ProcessingDoneTracker, ProcessingDoneWaiter,
 };
-use near_chain::test_utils::ValidatorSchedule;
 use near_chain::types::Tip;
 use near_chain::{ChainGenesis, ChainStoreAccess, Provenance};
 use near_chain_configs::{Genesis, GenesisConfig};
 use near_chunks::client::ShardsManagerResponse;
 use near_chunks::test_utils::{MockClientAdapterForShardsManager, SynchronousShardsManagerAdapter};
-use near_client::{Client, DistributeStateWitnessRequest, TxRequestHandler};
+use near_client::{Client, DistributeStateWitnessRequest, RpcHandler};
 use near_crypto::{InMemorySigner, Signer};
 use near_epoch_manager::shard_assignment::{account_id_to_shard_id, shard_id_to_uid};
 use near_network::client::ProcessTxResponse;
@@ -41,8 +40,9 @@ use near_primitives::views::{
 use near_store::ShardUId;
 use near_store::db::metadata::DbKind;
 use near_vm_runner::logic::ProtocolVersion;
+use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use time::ext::InstantExt as _;
 
 use crate::utils::mock_partial_witness_adapter::MockPartialWitnessAdapter;
@@ -64,7 +64,7 @@ pub struct TestEnv {
     pub partial_witness_adapters: Vec<MockPartialWitnessAdapter>,
     pub shards_manager_adapters: Vec<SynchronousShardsManagerAdapter>,
     pub clients: Vec<Client>,
-    pub tx_request_handlers: Vec<TxRequestHandler>,
+    pub rpc_handlers: Vec<RpcHandler>,
     pub(crate) account_indices: AccountIndices,
     pub(crate) paused_blocks: Arc<Mutex<HashMap<CryptoHash, Arc<OnceLock<()>>>>>,
     // random seed to be inject in each client according to AccountId
@@ -182,10 +182,10 @@ impl TestEnv {
     /// add something more robust.
     pub fn pause_block_processing(&mut self, capture: &mut TracingCapture, block: &CryptoHash) {
         let paused_blocks = Arc::clone(&self.paused_blocks);
-        paused_blocks.lock().unwrap().insert(*block, Arc::new(OnceLock::new()));
+        paused_blocks.lock().insert(*block, Arc::new(OnceLock::new()));
         capture.set_callback(move |msg| {
             if msg.starts_with("do_apply_chunks") {
-                let cell = paused_blocks.lock().unwrap().iter().find_map(|(block_hash, cell)| {
+                let cell = paused_blocks.lock().iter().find_map(|(block_hash, cell)| {
                     if msg.contains(&format!("block=Normal({block_hash})")) {
                         Some(Arc::clone(cell))
                     } else {
@@ -201,7 +201,7 @@ impl TestEnv {
 
     /// See `pause_block_processing`.
     pub fn resume_block_processing(&mut self, block: &CryptoHash) {
-        let mut paused_blocks = self.paused_blocks.lock().unwrap();
+        let mut paused_blocks = self.paused_blocks.lock();
         let cell = paused_blocks.remove(block).unwrap();
         let _ = cell.set(());
     }
@@ -214,8 +214,8 @@ impl TestEnv {
         self.account_indices.lookup_mut(&mut self.clients, account_id)
     }
 
-    pub fn tx_processor(&self, account_id: &AccountId) -> &TxRequestHandler {
-        self.account_indices.lookup(&self.tx_request_handlers, account_id)
+    pub fn rpc_handler(&self, account_id: &AccountId) -> &RpcHandler {
+        self.account_indices.lookup(&self.rpc_handlers, account_id)
     }
 
     pub fn shards_manager(&self, account: &AccountId) -> &SynchronousShardsManagerAdapter {
@@ -400,7 +400,7 @@ impl TestEnv {
         for (client_idx, partial_witness_adapter) in partial_witness_adapters.iter().enumerate() {
             while let Some(request) = partial_witness_adapter.pop_distribution_request() {
                 let DistributeStateWitnessRequest { state_witness, .. } = request;
-                let raw_witness_size = borsh::to_vec(&state_witness).unwrap().len();
+                let raw_witness_size = borsh::object_length(&state_witness).unwrap();
                 let key = state_witness.chunk_production_key();
                 let chunk_validators = self.clients[client_idx]
                     .epoch_manager
@@ -459,10 +459,7 @@ impl TestEnv {
                         tracing::warn!(target: "test", "Client not found for account_id {}", account_id);
                         return None;
                     }
-                    let processing_result = self
-                        .client(&account_id)
-                        .chunk_endorsement_tracker
-                        .process_chunk_endorsement(endorsement);
+                    let processing_result = self.client(&account_id).chunk_endorsement_tracker.process_chunk_endorsement(endorsement);
                     if !allow_errors {
                         processing_result.unwrap();
                     }
@@ -527,7 +524,7 @@ impl TestEnv {
             100,
             self.clients[id].chain.head().unwrap().last_block_hash,
         );
-        self.tx_request_handlers[id].process_tx(tx, false, false)
+        self.rpc_handlers[id].process_tx(tx, false, false)
     }
 
     /// This function used to be able to upgrade to a specific protocol version
@@ -664,18 +661,13 @@ impl TestEnv {
 
     /// Restarts client at given index. Note that the new client reuses runtime
     /// adapter of old client.
-    /// TODO (#8269): create new `KeyValueRuntime` for new client. Currently it
-    /// doesn't work because `KeyValueRuntime` misses info about new epochs in
-    /// memory caches.
-    /// Though, it seems that it is not necessary for current use cases.
     pub fn restart(&mut self, idx: usize) {
         let account_id = self.get_client_id(idx);
         let rng_seed = match self.seeds.get(&account_id) {
             Some(seed) => *seed,
             None => TEST_SEED,
         };
-        let vs = ValidatorSchedule::new().block_producers_per_epoch(vec![self.validators.clone()]);
-        let num_validator_seats = vs.all_block_producers().count() as NumSeats;
+        let num_validator_seats = self.validators.len() as NumSeats;
         self.clients[idx] = setup_client_with_runtime(
             self.clock.clone(),
             num_validator_seats,
@@ -812,7 +804,7 @@ impl TestEnv {
         tx: SignedTransaction,
     ) -> Result<FinalExecutionOutcomeView, InvalidTxError> {
         let tx_hash = tx.get_hash();
-        let response = self.tx_request_handlers[0].process_tx(tx, false, false);
+        let response = self.rpc_handlers[0].process_tx(tx, false, false);
         // Check if the transaction got rejected
         match response {
             ProcessTxResponse::NoResponse
@@ -886,7 +878,7 @@ impl TestEnv {
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
-        let paused_blocks = self.paused_blocks.lock().unwrap();
+        let paused_blocks = self.paused_blocks.lock();
         for cell in paused_blocks.values() {
             let _ = cell.set(());
         }

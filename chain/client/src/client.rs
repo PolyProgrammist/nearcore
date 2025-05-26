@@ -7,7 +7,6 @@ use crate::chunk_inclusion_tracker::ChunkInclusionTracker;
 use crate::chunk_producer::ChunkProducer;
 use crate::client_actor::ClientSenderForClient;
 use crate::debug::BlockProductionTracker;
-use crate::metrics;
 use crate::stateless_validation::chunk_endorsement::ChunkEndorsementTracker;
 use crate::stateless_validation::chunk_validator::ChunkValidator;
 use crate::stateless_validation::partial_witness::partial_witness_actor::PartialWitnessSenderForClient;
@@ -17,6 +16,7 @@ use crate::sync::handler::SyncHandler;
 use crate::sync::header::HeaderSync;
 use crate::sync::state::chain_requests::ChainSenderForStateSync;
 use crate::sync::state::{StateSync, StateSyncResult};
+use crate::{ProduceChunkResult, metrics};
 use itertools::Itertools;
 use near_async::futures::{AsyncComputationSpawner, FutureSpawner};
 use near_async::messaging::IntoSender;
@@ -37,7 +37,7 @@ use near_chain::{
 };
 use near_chain_configs::{ClientConfig, MutableValidatorSigner, UpdatableClientConfig};
 use near_chunks::adapter::ShardsManagerRequestFromClient;
-use near_chunks::logic::{decode_encoded_chunk, persist_chunk};
+use near_chunks::logic::{create_partial_chunk, persist_chunk};
 use near_client_primitives::types::{Error, StateSyncStatus, SyncStatus};
 use near_epoch_manager::EpochManagerAdapter;
 use near_epoch_manager::shard_assignment::shard_id_to_uid;
@@ -56,8 +56,8 @@ use near_primitives::network::PeerId;
 use near_primitives::optimistic_block::OptimisticBlock;
 use near_primitives::receipt::Receipt;
 use near_primitives::sharding::{
-    EncodedShardChunk, PartialEncodedChunk, ShardChunk, ShardChunkHeader, StateSyncInfo,
-    StateSyncInfoV1,
+    EncodedShardChunk, PartialEncodedChunk, ShardChunk, ShardChunkHeader, ShardChunkWithEncoding,
+    StateSyncInfo, StateSyncInfoV1,
 };
 use near_primitives::stateless_validation::ChunkProductionKey;
 use near_primitives::transaction::ValidatedTransaction;
@@ -69,7 +69,7 @@ use near_primitives::validator_signer::ValidatorSigner;
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::{CatchupStatusView, DroppedReason};
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{debug, debug_span, error, info, warn};
@@ -165,7 +165,7 @@ pub struct Client {
     /// Also tracks banned chunk producers and filters out chunks produced by them
     pub chunk_inclusion_tracker: ChunkInclusionTracker,
     /// Tracks chunk endorsements received from chunk validators. Used to filter out chunks ready for inclusion
-    pub chunk_endorsement_tracker: ChunkEndorsementTracker,
+    pub chunk_endorsement_tracker: Arc<ChunkEndorsementTracker>,
     /// Adapter to send request to partial_witness_actor to distribute state witness.
     pub partial_witness_adapter: PartialWitnessSenderForClient,
     // Optional value used for the Chunk Distribution Network Feature.
@@ -174,6 +174,8 @@ pub struct Client {
     upgrade_schedule: ProtocolUpgradeVotingSchedule,
     /// Produced optimistic block.
     last_optimistic_block_produced: Option<OptimisticBlock>,
+    /// Cached precomputed set of the chunk producers for current and next epochs.
+    chunk_producer_accounts_cache: Option<(EpochId, Arc<Vec<AccountId>>)>,
 }
 
 impl AsRef<Client> for Client {
@@ -300,8 +302,10 @@ impl Client {
             config.chunk_wait_mult,
             doomslug_threshold_mode,
         );
-        let chunk_endorsement_tracker =
-            ChunkEndorsementTracker::new(epoch_manager.clone(), chain.chain_store().store());
+        let chunk_endorsement_tracker = Arc::new(ChunkEndorsementTracker::new(
+            epoch_manager.clone(),
+            chain.chain_store().store(),
+        ));
         let chunk_producer = ChunkProducer::new(
             clock.clone(),
             config.produce_chunk_add_transactions_time_limit.clone(),
@@ -364,6 +368,7 @@ impl Client {
             chunk_distribution_network,
             upgrade_schedule,
             last_optimistic_block_produced: None,
+            chunk_producer_accounts_cache: None,
         })
     }
 
@@ -403,7 +408,7 @@ impl Client {
                     // By now the chunk must be in store, otherwise the block would have been orphaned
                     let chunk = self.chain.get_chunk(&chunk_header.chunk_hash()).unwrap();
                     let transactions = chunk.to_transactions();
-                    let mut pool_guard = self.chunk_producer.sharded_tx_pool.lock().unwrap();
+                    let mut pool_guard = self.chunk_producer.sharded_tx_pool.lock();
                     pool_guard.remove_transactions(shard_uid, transactions);
                 }
             }
@@ -458,7 +463,7 @@ impl Client {
                         .collect::<Vec<_>>();
 
                     let reintroduced_count = {
-                        let mut pool_guard = self.chunk_producer.sharded_tx_pool.lock().unwrap();
+                        let mut pool_guard = self.chunk_producer.sharded_tx_pool.lock();
                         pool_guard.reintroduce_transactions(shard_uid, validated_txs)
                     };
 
@@ -649,7 +654,7 @@ impl Client {
             &prev_header,
             height,
             &*validator_signer,
-            self.clock.clone(),
+            self.clock.now_utc().unix_timestamp_nanos() as u64,
             sandbox_delta_time,
         );
 
@@ -683,7 +688,7 @@ impl Client {
         if prepare_chunk_headers {
             self.chunk_inclusion_tracker.prepare_chunk_headers_ready_for_inclusion(
                 &head.last_block_hash,
-                &mut self.chunk_endorsement_tracker,
+                &self.chunk_endorsement_tracker,
             )?;
         }
 
@@ -983,9 +988,9 @@ impl Client {
         let _span =
             debug_span!(target: "chain", "receive_block_impl", was_requested, ?peer_id).entered();
         self.chain.blocks_delay_tracker.mark_block_received(&block);
-        // To protect ourselves from spamming, we do some pre-check on block height before we do any
-        // real processing.
-        if !self.check_block_height(&block, was_requested)? {
+        // To protect ourselves from spamming, we do a pre-check before doing
+        // any real processing.
+        if !self.should_process_block(&block, was_requested)? {
             self.chain
                 .blocks_delay_tracker
                 .mark_block_dropped(block.hash(), DroppedReason::HeightProcessed);
@@ -1051,38 +1056,48 @@ impl Client {
         );
     }
 
-    /// To protect ourselves from spamming, we do some pre-check on block height before we do any
-    /// processing. This function returns true if the block height is valid.
-    fn check_block_height(
+    /// To protect ourselves from spamming, we do some pre-check on block
+    /// height and hash before we do any processing. This function returns
+    /// true if the block should be processed.
+    fn should_process_block(
         &self,
         block: &Block,
         was_requested: bool,
     ) -> Result<bool, near_chain::Error> {
         let head = self.chain.head()?;
+        let block_height = block.header().height();
         let is_syncing = self.sync_handler.sync_status.is_syncing();
-        if block.header().height() >= head.height + BLOCK_HORIZON && is_syncing && !was_requested {
+        if block_height >= head.height + BLOCK_HORIZON && is_syncing && !was_requested {
             debug!(target: "client", head_height = head.height, "Dropping a block that is too far ahead.");
             return Ok(false);
         }
         let tail = self.chain.tail()?;
-        if block.header().height() < tail {
+        if block_height < tail {
             debug!(target: "client", tail_height = tail, "Dropping a block that is too far behind.");
             return Ok(false);
         }
-        // drop the block if a) it is not requested, b) we already processed this height,
-        //est-utils/actix-test-utils/src/lib.rs c) it is not building on top of current head
-        if !was_requested
-            && block.header().prev_hash()
-                != &self
-                    .chain
-                    .head()
-                    .map_or_else(|_| CryptoHash::default(), |tip| tip.last_block_hash)
-        {
-            if self.chain.is_height_processed(block.header().height())? {
-                debug!(target: "client", height = block.header().height(), "Dropping a block because we've seen this height before and we didn't request it");
-                return Ok(false);
-            }
+
+        // If we requested the block, we want to process it.
+        if was_requested {
+            return Ok(true);
         }
+
+        // If we already processed this hash, drop the block.
+        let hash = *block.hash();
+        if self.chain.is_hash_processed(&hash) {
+            debug!(target: "client", ?hash, block_height, "Dropping a block because we've seen this hash before");
+            return Ok(false);
+        }
+
+        // If the block is not on top of current head and we already processed
+        // the height, drop the block.
+        let is_on_head = block.header().prev_hash()
+            == &self.chain.head().map_or_else(|_| CryptoHash::default(), |tip| tip.last_block_hash);
+        if !is_on_head && self.chain.is_height_processed(block_height)? {
+            debug!(target: "client", ?hash, block_height, "Dropping a block because we've seen this height before and we didn't request it");
+            return Ok(false);
+        }
+
         Ok(true)
     }
 
@@ -1482,6 +1497,7 @@ impl Client {
                 self.chain.get_block_header(last_final_block).map_or(0, |header| header.height())
             };
             self.chain.blocks_with_missing_chunks.prune_blocks_below_height(last_finalized_height);
+            self.chain.blocks_pending_execution.prune_blocks_below_height(last_finalized_height);
 
             // send_network_chain_info should be called whenever the chain head changes.
             // See send_network_chain_info() for more details.
@@ -1501,8 +1517,7 @@ impl Client {
                 match (old_shard_layout, new_shard_layout) {
                     (Ok(old_shard_layout), Ok(new_shard_layout)) => {
                         if old_shard_layout != new_shard_layout {
-                            let mut guarded_pool =
-                                self.chunk_producer.sharded_tx_pool.lock().unwrap();
+                            let mut guarded_pool = self.chunk_producer.sharded_tx_pool.lock();
                             guarded_pool.reshard(&old_shard_layout, &new_shard_layout);
                         }
                     }
@@ -1713,56 +1728,59 @@ impl Client {
                     self.chain.transaction_validity_check(block.header().clone())(tx)
                 },
             );
-            match result {
-                Ok(Some(result)) => {
-                    let shard_chunk = self
-                        .persist_and_distribute_encoded_chunk(
-                            result.encoded_chunk,
-                            result.encoded_chunk_parts_paths,
-                            result.receipts,
-                            validator_id.clone(),
-                        )
-                        .expect("Failed to process produced chunk");
-                    if let Err(err) = self.send_chunk_state_witness_to_chunk_validators(
-                        &epoch_id,
-                        block.header(),
-                        &last_header,
-                        &shard_chunk,
-                        &Some(signer.clone()),
-                    ) {
-                        tracing::error!(target: "client", ?err, "Failed to send chunk state witness to chunk validators");
-                    }
-                }
-                Ok(None) => {}
+
+            let ProduceChunkResult { chunk, encoded_chunk_parts_paths, receipts } = match result {
+                Ok(Some(res)) => res,
+                Ok(None) => return,
                 Err(err) => {
                     error!(target: "client", ?err, "Error producing chunk");
+                    return;
+                }
+            };
+            if !cfg!(feature = "protocol_feature_spice") {
+                if let Err(err) = self.send_chunk_state_witness_to_chunk_validators(
+                    &epoch_id,
+                    block.header(),
+                    &last_header,
+                    chunk.to_shard_chunk(),
+                    &Some(signer.clone()),
+                ) {
+                    tracing::error!(target: "client", ?err, "Failed to send chunk state witness to chunk validators");
                 }
             }
+            self.persist_and_distribute_encoded_chunk(
+                chunk,
+                encoded_chunk_parts_paths,
+                receipts,
+                validator_id.clone(),
+            )
+            .expect("Failed to process produced chunk");
         }
     }
 
     pub fn persist_and_distribute_encoded_chunk(
         &mut self,
-        encoded_chunk: EncodedShardChunk,
+        chunk: ShardChunkWithEncoding,
         merkle_paths: Vec<MerklePath>,
         receipts: Vec<Receipt>,
         validator_id: AccountId,
-    ) -> Result<ShardChunk, Error> {
-        let (shard_chunk, partial_chunk) = decode_encoded_chunk(
-            &encoded_chunk,
+    ) -> Result<(), Error> {
+        let partial_chunk = create_partial_chunk(
+            &chunk,
             merkle_paths.clone(),
             Some(&validator_id),
             self.epoch_manager.as_ref(),
             &self.shard_tracker,
         )?;
+        let (shard_chunk, encoded_shard_chunk) = chunk.into_parts();
         let partial_chunk_arc = Arc::new(partial_chunk.clone());
         persist_chunk(
             Arc::clone(&partial_chunk_arc),
-            Some(shard_chunk.clone()),
+            Some(shard_chunk),
             self.chain.mut_chain_store(),
         )?;
 
-        let chunk_header = encoded_chunk.cloned_header();
+        let chunk_header = encoded_shard_chunk.cloned_header();
         if let Some(chunk_distribution) = &self.chunk_distribution_network {
             if chunk_distribution.enabled() {
                 let partial_chunk_arc = Arc::clone(&partial_chunk_arc);
@@ -1779,11 +1797,11 @@ impl Client {
             .mark_chunk_header_ready_for_inclusion(chunk_header, validator_id);
         self.shards_manager_adapter.send(ShardsManagerRequestFromClient::DistributeEncodedChunk {
             partial_chunk,
-            encoded_chunk,
+            encoded_chunk: encoded_shard_chunk,
             merkle_paths,
             outgoing_receipts: receipts,
         });
-        Ok(shard_chunk)
+        Ok(())
     }
 
     pub fn request_missing_chunks(
@@ -2198,7 +2216,7 @@ impl Client {
 
 impl Client {
     /// Each epoch defines a set of important accounts: block producers, chunk producers,
-    /// approvers. Low-latency reliable communication between those accounts is critical,
+    /// chunk validators. Low-latency reliable communication between those accounts is critical,
     /// so that the blocks can be produced on time. This function computes the set of
     /// important accounts (aka TIER1 accounts) so that it can be fed to PeerManager, which
     /// will take care of the traffic prioritization.
@@ -2220,8 +2238,8 @@ impl Client {
         let _guard =
             tracing::debug_span!(target: "client", "get_tier1_accounts(): recomputing").entered();
 
-        // What we really need are: chunk producers, block producers and block approvers for
-        // this epoch and the beginning of the next epoch (so that all required connections are
+        // What we really need are: chunk producers/validators and block producers/approvers
+        // for this epoch and the beginning of the next epoch (so that all required connections are
         // established in advance). Note that block producers and block approvers are not
         // exactly the same - last blocks of this epoch will also need to be signed by the
         // block producers of the next epoch. On the other hand, block approvers
@@ -2229,10 +2247,10 @@ impl Client {
         // definitely don't need to connect to right now). Still, as long as there is no big churn
         // in the set of block producers, it doesn't make much difference.
         //
-        // With the current implementation we just fetch chunk producers and block producers
+        // With the current implementation we just fetch chunk producers/validators and block producers
         // of this and the next epoch (which covers what we need, as described above), but may
         // require some tuning in the future. In particular, if we decide that connecting to
-        // block & chunk producers of the next epoch is too expensive, we can postpone it
+        // the newly important nodes of the next epoch is too expensive, we can postpone it
         // till almost the end of this epoch.
         let mut account_keys = AccountKeys::new();
         for epoch_id in [&tip.epoch_id, &tip.next_epoch_id] {
@@ -2253,10 +2271,41 @@ impl Client {
                     .or_default()
                     .insert(bp.public_key().clone());
             }
+            for v in self.epoch_manager.get_epoch_all_validators(epoch_id)? {
+                account_keys
+                    .entry(v.account_id().clone())
+                    .or_default()
+                    .insert(v.public_key().clone());
+            }
         }
         let account_keys = Arc::new(account_keys);
-        self.tier1_accounts_cache = Some((tip.epoch_id, account_keys.clone()));
+        self.tier1_accounts_cache = Some((tip.epoch_id, Arc::clone(&account_keys)));
         Ok(account_keys)
+    }
+
+    /// We send the optimistic block to the chunk producers of the current and next epochs.
+    pub(crate) fn get_optimistic_block_targets(
+        &mut self,
+        tip: &Tip,
+    ) -> Result<Arc<Vec<AccountId>>, Error> {
+        match &self.chunk_producer_accounts_cache {
+            Some(it) if it.0 == tip.epoch_id => return Ok(it.1.clone()),
+            _ => {}
+        }
+
+        let _span =
+            tracing::debug_span!(target: "client", "get_optimistic_block_targets(): recomputing")
+                .entered();
+
+        let mut account_ids = HashSet::new();
+        for epoch_id in [&tip.epoch_id, &tip.next_epoch_id] {
+            for cp in self.epoch_manager.get_epoch_chunk_producers(epoch_id)? {
+                account_ids.insert(cp.account_id().clone());
+            }
+        }
+        let account_ids = Arc::new(account_ids.into_iter().collect_vec());
+        self.chunk_producer_accounts_cache = Some((tip.epoch_id, Arc::clone(&account_ids)));
+        Ok(account_ids)
     }
 
     /// send_network_chain_info sends ChainInfo to PeerManagerActor.
@@ -2302,9 +2351,7 @@ impl Client {
 impl Client {
     pub fn get_catchup_status(&self) -> Result<Vec<CatchupStatusView>, near_chain::Error> {
         let mut ret = vec![];
-        for (sync_hash, CatchupState { sync_status, catchup, .. }) in
-            self.catchup_state_syncs.iter()
-        {
+        for (sync_hash, CatchupState { sync_status, catchup, .. }) in &self.catchup_state_syncs {
             let sync_block_height = self.chain.get_block_header(sync_hash)?.height();
             let shard_sync_status: HashMap<_, _> = sync_status
                 .sync_status

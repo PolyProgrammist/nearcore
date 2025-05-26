@@ -102,7 +102,7 @@ impl ChunkInclusionTracker {
 
     // once a set of ChunkHash is evicted from prev_block_to_chunk_hash_ready, cleanup chunk_hash_to_chunk_info
     fn process_evicted_entry(&mut self, evicted_entry: HashMap<ShardId, ChunkHash>) {
-        for (_, chunk_hash) in evicted_entry.into_iter() {
+        for (_, chunk_hash) in evicted_entry {
             self.chunk_hash_to_chunk_info.remove(&chunk_hash);
         }
     }
@@ -117,7 +117,7 @@ impl ChunkInclusionTracker {
     pub fn prepare_chunk_headers_ready_for_inclusion(
         &mut self,
         prev_block_hash: &CryptoHash,
-        endorsement_tracker: &mut ChunkEndorsementTracker,
+        endorsement_tracker: &ChunkEndorsementTracker,
     ) -> Result<(), Error> {
         let Some(entry) = self.prev_block_to_chunk_hash_ready.get(prev_block_hash) else {
             return Ok(());
@@ -171,7 +171,7 @@ impl ChunkInclusionTracker {
                     "Not including chunk because of insufficient chunk endorsements"
                 );
             }
-            if !banned && is_endorsed {
+            if !banned && (is_endorsed || cfg!(feature = "protocol_feature_spice")) {
                 // only add to chunk_headers_ready_for_inclusion if chunk is not from a banned chunk producer
                 // and chunk has sufficient chunk endorsements.
                 // Chunk endorsements are got as part of call to prepare_chunk_headers_ready_for_inclusion
@@ -191,7 +191,7 @@ impl ChunkInclusionTracker {
 
     pub fn get_banned_chunk_producers(&self) -> Vec<(EpochId, Vec<AccountId>)> {
         let mut banned_chunk_producers: HashMap<EpochId, Vec<_>> = HashMap::new();
-        for ((epoch_id, account_id), _) in self.banned_chunk_producers.iter() {
+        for ((epoch_id, account_id), _) in &self.banned_chunk_producers {
             banned_chunk_producers.entry(*epoch_id).or_default().push(account_id.clone());
         }
         banned_chunk_producers.into_iter().collect_vec()

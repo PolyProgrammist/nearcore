@@ -1,5 +1,5 @@
 use crate::env::nightshade_setup::TestEnvNightshadeSetupExt;
-use crate::env::setup::{setup_mock, setup_mock_all_validators};
+use crate::env::setup::setup_mock;
 use crate::env::test_env::TestEnv;
 use crate::env::test_env_builder::TestEnvBuilder;
 use crate::utils::process_blocks::{
@@ -11,7 +11,6 @@ use futures::{FutureExt, future};
 use itertools::Itertools;
 use near_actix_test_utils::run_actix;
 use near_async::time::{Clock, Duration};
-use near_chain::test_utils::ValidatorSchedule;
 use near_chain::types::{LatestKnown, RuntimeAdapter};
 use near_chain::validate::validate_chunk_with_chunk_extra;
 use near_chain::{Block, BlockProcessingArtifact, ChainStoreAccess, Error, Provenance};
@@ -23,7 +22,7 @@ use near_client::{
     BlockApproval, BlockResponse, GetBlockWithMerkleTree, ProcessTxResponse, ProduceChunkResult,
     SetNetworkInfo,
 };
-use near_crypto::{InMemorySigner, KeyType, PublicKey, Signature};
+use near_crypto::{InMemorySigner, KeyType, Signature};
 use near_network::test_utils::{MockPeerManagerAdapter, wait_or_panic};
 use near_network::types::{
     BlockInfo, ConnectedPeerInfo, HighestHeightPeerInfo, NetworkInfo, PeerChainInfo,
@@ -43,7 +42,9 @@ use near_primitives::hash::{CryptoHash, hash};
 use near_primitives::merkle::{PartialMerkleTree, verify_hash};
 use near_primitives::receipt::DelayedReceiptIndices;
 use near_primitives::shard_layout::{ShardUId, get_block_shard_uid};
-use near_primitives::sharding::{ShardChunkHeader, ShardChunkHeaderInner, ShardChunkHeaderV3};
+use near_primitives::sharding::{
+    ShardChunkHeader, ShardChunkHeaderInner, ShardChunkHeaderV3, ShardChunkWithEncoding,
+};
 use near_primitives::state_part::PartId;
 use near_primitives::state_sync::StatePartKey;
 use near_primitives::stateless_validation::ChunkProductionKey;
@@ -56,7 +57,6 @@ use near_primitives::transaction::{
     Transaction, TransactionV0,
 };
 use near_primitives::trie_key::TrieKey;
-use near_primitives::types::validator_stake::ValidatorStake;
 use near_primitives::types::{AccountId, BlockHeight, EpochId, NumBlocks};
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::{FinalExecutionStatus, QueryRequest, QueryResponseKind};
@@ -67,12 +67,13 @@ use near_store::archive::cold_storage::{update_cold_db, update_cold_head};
 use near_store::db::metadata::{DB_VERSION, DbKind};
 use near_store::test_utils::create_test_node_storage_with_cold;
 use near_store::{DBCol, TrieChanges, get};
+use parking_lot::RwLock;
 use rand::prelude::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
 
 /// Runs block producing client and stops after network mock received two blocks.
 #[test]
@@ -86,7 +87,7 @@ fn produce_two_blocks() {
             "test".parse().unwrap(),
             true,
             false,
-            Box::new(move |msg, _ctx, _| {
+            Box::new(move |msg, _ctx, _, _| {
                 if let NetworkRequests::Block { .. } = msg.as_network_requests_ref() {
                     count.fetch_add(1, Ordering::Relaxed);
                     if count.load(Ordering::Relaxed) >= 2 {
@@ -115,9 +116,9 @@ fn receive_network_block() {
             "test2".parse().unwrap(),
             true,
             false,
-            Box::new(move |msg, _ctx, _| {
+            Box::new(move |msg, _ctx, _, _| {
                 if let NetworkRequests::Approval { .. } = msg.as_network_requests_ref() {
-                    let mut first_header_announce = first_header_announce.write().unwrap();
+                    let mut first_header_announce = first_header_announce.write();
                     if *first_header_announce {
                         *first_header_announce = false;
                     } else {
@@ -189,7 +190,7 @@ fn produce_block_with_approvals() {
             block_producer.parse().unwrap(),
             true,
             false,
-            Box::new(move |msg, _ctx, _| {
+            Box::new(move |msg, _ctx, _, _| {
                 if let NetworkRequests::Block { block } = msg.as_network_requests_ref() {
                     // Below we send approvals from all the block producers except for test1 and test2
                     // test1 will only create their approval for height 10 after their doomslug timer
@@ -285,92 +286,6 @@ fn produce_block_with_approvals() {
     });
 }
 
-/// When approvals arrive early, they should be properly cached.
-#[test]
-fn slow_test_produce_block_with_approvals_arrived_early() {
-    init_test_logger();
-    let vs = ValidatorSchedule::new().num_shards(4).block_producers_per_epoch(vec![vec![
-        "test1".parse().unwrap(),
-        "test2".parse().unwrap(),
-        "test3".parse().unwrap(),
-        "test4".parse().unwrap(),
-    ]]);
-    let archive = vec![false; vs.all_block_producers().count()];
-    let key_pairs =
-        vec![PeerInfo::random(), PeerInfo::random(), PeerInfo::random(), PeerInfo::random()];
-    let block_holder: Arc<RwLock<Option<Block>>> = Arc::new(RwLock::new(None));
-    run_actix(async move {
-        let mut approval_counter = 0;
-        setup_mock_all_validators(
-            Clock::real(),
-            vs,
-            key_pairs,
-            true,
-            2000,
-            false,
-            false,
-            100,
-            true,
-            archive,
-            false,
-            None,
-            Box::new(
-                move |conns,
-                      _,
-                      msg: &PeerManagerMessageRequest|
-                      -> (PeerManagerMessageResponse, bool) {
-                    let msg = msg.as_network_requests_ref();
-                    match msg {
-                        NetworkRequests::Block { block } => {
-                            if block.header().height() == 3 {
-                                for (i, actor_handles) in conns.iter().enumerate() {
-                                    if i > 0 {
-                                        actor_handles.client_actor.do_send(
-                                            BlockResponse {
-                                                block: block.clone(),
-                                                peer_id: PeerInfo::random().id,
-                                                was_requested: false,
-                                            }
-                                            .with_span_context(),
-                                        )
-                                    }
-                                }
-                                *block_holder.write().unwrap() = Some(block.clone());
-                                return (NetworkResponses::NoResponse.into(), false);
-                            } else if block.header().height() == 4 {
-                                System::current().stop();
-                            }
-                            (NetworkResponses::NoResponse.into(), true)
-                        }
-                        NetworkRequests::Approval { approval_message } => {
-                            if approval_message.target == "test1"
-                                && approval_message.approval.target_height == 4
-                            {
-                                approval_counter += 1;
-                            }
-                            if approval_counter == 3 {
-                                let block = block_holder.read().unwrap().clone().unwrap();
-                                conns[0].client_actor.do_send(
-                                    BlockResponse {
-                                        block,
-                                        peer_id: PeerInfo::random().id,
-                                        was_requested: false,
-                                    }
-                                    .with_span_context(),
-                                );
-                            }
-                            (NetworkResponses::NoResponse.into(), true)
-                        }
-                        _ => (NetworkResponses::NoResponse.into(), true),
-                    }
-                },
-            ),
-        );
-
-        near_network::test_utils::wait_or_panic(10000);
-    });
-}
-
 /// Sends one invalid block followed by one valid block, and checks that client announces only valid block.
 /// and that the node bans the peer for invalid block header.
 fn invalid_blocks_common(is_requested: bool) {
@@ -383,7 +298,7 @@ fn invalid_blocks_common(is_requested: bool) {
             "other".parse().unwrap(),
             true,
             false,
-            Box::new(move |msg, _ctx, _client_actor| {
+            Box::new(move |msg, _ctx, _client_actor, _rpc_handler_actor| {
                 match msg.as_network_requests_ref() {
                     NetworkRequests::Block { block } => {
                         if is_requested {
@@ -535,173 +450,6 @@ fn test_invalid_blocks_requested() {
     invalid_blocks_common(true);
 }
 
-enum InvalidBlockMode {
-    /// Header is invalid
-    InvalidHeader,
-    /// Block is ill-formed (roots check fail)
-    IllFormed,
-    /// Block is invalid for other reasons
-    InvalidBlock,
-}
-
-fn ban_peer_for_invalid_block_common(mode: InvalidBlockMode) {
-    init_test_logger();
-    let vs = ValidatorSchedule::new().block_producers_per_epoch(vec![vec![
-        "test1".parse().unwrap(),
-        "test2".parse().unwrap(),
-        "test3".parse().unwrap(),
-        "test4".parse().unwrap(),
-    ]]);
-    let validators = vs.all_block_producers().cloned().collect::<Vec<_>>();
-    let key_pairs =
-        vec![PeerInfo::random(), PeerInfo::random(), PeerInfo::random(), PeerInfo::random()];
-    run_actix(async move {
-        let mut ban_counter = 0;
-        let mut sent_bad_blocks = false;
-        setup_mock_all_validators(
-            Clock::real(),
-            vs,
-            key_pairs,
-            true,
-            100,
-            false,
-            false,
-            100,
-            true,
-            vec![false; validators.len()],
-            false,
-            None,
-            Box::new(
-                move |conns,
-                      _,
-                      msg: &PeerManagerMessageRequest|
-                      -> (PeerManagerMessageResponse, bool) {
-                    match msg.as_network_requests_ref() {
-                        NetworkRequests::Block { block } => {
-                            if block.header().height() >= 4 && !sent_bad_blocks {
-                                let block_producer_idx =
-                                    block.header().height() as usize % validators.len();
-                                let block_producer = &validators[block_producer_idx];
-                                let validator_signer1 = create_test_signer(block_producer.as_str());
-                                sent_bad_blocks = true;
-                                let mut block_mut = block.clone();
-                                match mode {
-                                    InvalidBlockMode::InvalidHeader => {
-                                        // produce an invalid block with invalid header.
-                                        block_mut.mut_header().set_chunk_mask(vec![]);
-                                        block_mut.mut_header().resign(&validator_signer1);
-                                    }
-                                    InvalidBlockMode::IllFormed => {
-                                        // produce an ill-formed block
-                                        block_mut.mut_header().set_chunk_headers_root(hash(&[1]));
-                                        block_mut.mut_header().resign(&validator_signer1);
-                                    }
-                                    InvalidBlockMode::InvalidBlock => {
-                                        // produce an invalid block whose invalidity cannot be verified by just
-                                        // having its header.
-                                        let proposals = vec![ValidatorStake::new(
-                                            "test1".parse().unwrap(),
-                                            PublicKey::empty(KeyType::ED25519),
-                                            0,
-                                        )];
-
-                                        block_mut
-                                            .mut_header()
-                                            .set_prev_validator_proposals(proposals);
-                                        block_mut.mut_header().resign(&validator_signer1);
-                                    }
-                                }
-
-                                for (i, actor_handles) in conns.into_iter().enumerate() {
-                                    if i != block_producer_idx {
-                                        actor_handles.client_actor.do_send(
-                                            BlockResponse {
-                                                block: block_mut.clone(),
-                                                peer_id: PeerInfo::random().id,
-                                                was_requested: false,
-                                            }
-                                            .with_span_context(),
-                                        )
-                                    }
-                                }
-
-                                return (
-                                    PeerManagerMessageResponse::NetworkResponses(
-                                        NetworkResponses::NoResponse,
-                                    ),
-                                    false,
-                                );
-                            }
-                            if block.header().height() > 20 {
-                                match mode {
-                                    InvalidBlockMode::InvalidHeader
-                                    | InvalidBlockMode::IllFormed => {
-                                        assert_eq!(ban_counter, 3);
-                                    }
-                                    _ => {}
-                                }
-                                System::current().stop();
-                            }
-                            (
-                                PeerManagerMessageResponse::NetworkResponses(
-                                    NetworkResponses::NoResponse,
-                                ),
-                                true,
-                            )
-                        }
-                        NetworkRequests::BanPeer { peer_id, ban_reason } => match mode {
-                            InvalidBlockMode::InvalidHeader | InvalidBlockMode::IllFormed => {
-                                assert_eq!(ban_reason, &ReasonForBan::BadBlockHeader);
-                                ban_counter += 1;
-                                if ban_counter > 3 {
-                                    panic!("more bans than expected");
-                                }
-                                (
-                                    PeerManagerMessageResponse::NetworkResponses(
-                                        NetworkResponses::NoResponse,
-                                    ),
-                                    true,
-                                )
-                            }
-                            InvalidBlockMode::InvalidBlock => {
-                                panic!(
-                                    "banning peer {:?} unexpectedly for {:?}",
-                                    peer_id, ban_reason
-                                );
-                            }
-                        },
-                        _ => (
-                            PeerManagerMessageResponse::NetworkResponses(
-                                NetworkResponses::NoResponse,
-                            ),
-                            true,
-                        ),
-                    }
-                },
-            ),
-        );
-        near_network::test_utils::wait_or_panic(20000);
-    });
-}
-
-/// If a peer sends a block whose header is valid and passes basic validation, the peer is not banned.
-#[test]
-fn test_not_ban_peer_for_invalid_block() {
-    ban_peer_for_invalid_block_common(InvalidBlockMode::InvalidBlock);
-}
-
-/// If a peer sends a block whose header is invalid, we should ban them and do not forward the block
-#[test]
-fn test_ban_peer_for_invalid_block_header() {
-    ban_peer_for_invalid_block_common(InvalidBlockMode::InvalidHeader);
-}
-
-/// If a peer sends a block that is ill-formed, we should ban them and do not forward the block
-#[test]
-fn test_ban_peer_for_ill_formed_block() {
-    ban_peer_for_invalid_block_common(InvalidBlockMode::IllFormed);
-}
-
 /// Runs two validators runtime with only one validator online.
 /// Present validator produces blocks on it's height after deadline.
 #[test]
@@ -714,7 +462,7 @@ fn skip_block_production() {
             "test2".parse().unwrap(),
             true,
             false,
-            Box::new(move |msg, _ctx, _client_actor| {
+            Box::new(move |msg, _ctx, _client_actor, _rpc_handler_actor| {
                 match msg.as_network_requests_ref() {
                     NetworkRequests::Block { block } => {
                         if block.header().height() > 3 {
@@ -743,16 +491,18 @@ fn client_sync_headers() {
             "other".parse().unwrap(),
             false,
             false,
-            Box::new(move |msg, _ctx, _client_actor| match msg.as_network_requests_ref() {
-                NetworkRequests::BlockHeadersRequest { hashes, peer_id } => {
-                    assert_eq!(*peer_id, peer_info1.id);
-                    assert_eq!(hashes.len(), 1);
-                    // TODO: check it requests correct hashes.
-                    System::current().stop();
+            Box::new(move |msg, _ctx, _client_actor, _rpc_handler_actor| {
+                match msg.as_network_requests_ref() {
+                    NetworkRequests::BlockHeadersRequest { hashes, peer_id } => {
+                        assert_eq!(*peer_id, peer_info1.id);
+                        assert_eq!(hashes.len(), 1);
+                        // TODO: check it requests correct hashes.
+                        System::current().stop();
 
-                    PeerManagerMessageResponse::NetworkResponses(NetworkResponses::NoResponse)
+                        PeerManagerMessageResponse::NetworkResponses(NetworkResponses::NoResponse)
+                    }
+                    _ => PeerManagerMessageResponse::NetworkResponses(NetworkResponses::NoResponse),
                 }
-                _ => PeerManagerMessageResponse::NetworkResponses(NetworkResponses::NoResponse),
             }),
         );
         actor_handles.client_actor.do_send(
@@ -820,7 +570,7 @@ fn test_process_invalid_tx() {
         env.produce_block(0, i);
     }
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(tx, false, false),
+        env.rpc_handlers[0].process_tx(tx, false, false),
         ProcessTxResponse::InvalidTx(InvalidTxError::Expired)
     );
     let tx2 = SignedTransaction::new(
@@ -835,7 +585,7 @@ fn test_process_invalid_tx() {
         }),
     );
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(tx2, false, false),
+        env.rpc_handlers[0].process_tx(tx2, false, false),
         ProcessTxResponse::InvalidTx(InvalidTxError::Expired)
     );
 }
@@ -1096,7 +846,7 @@ fn test_bad_chunk_mask() {
                 .mut_header()
                 .resign(&*env.client(&block_producer).validator_signer.get().unwrap().clone());
 
-            for client in env.clients.iter_mut() {
+            for client in &mut env.clients {
                 let res = client
                     .process_block_test_no_produce_chunk(block.clone().into(), Provenance::NONE);
                 if !mess_with_chunk_mask {
@@ -1440,7 +1190,7 @@ fn test_gc_execution_outcome() {
     );
     let tx_hash = tx.get_hash();
 
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     for i in 1..epoch_length {
         env.produce_block(0, i);
     }
@@ -1608,11 +1358,11 @@ fn test_tx_forwarding() {
     // client itself.
     let client_index = 1;
     assert_eq!(
-        env.tx_request_handlers[client_index].process_tx(tx, false, false),
+        env.rpc_handlers[client_index].process_tx(tx, false, false),
         ProcessTxResponse::RequestRouted
     );
     assert_eq!(
-        env.network_adapters[client_index].requests.read().unwrap().len(),
+        env.network_adapters[client_index].requests.read().len(),
         env.clients[client_index].config.tx_routing_height_horizon as usize
     );
 }
@@ -1629,10 +1379,10 @@ fn test_tx_forwarding_no_double_forwarding() {
     // The transaction has already been forwarded, so it won't be forwarded again.
     let is_forwarded = true;
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(tx, is_forwarded, false),
+        env.rpc_handlers[0].process_tx(tx, is_forwarded, false),
         ProcessTxResponse::NoResponse
     );
-    assert!(env.network_adapters[0].requests.read().unwrap().is_empty());
+    assert!(env.network_adapters[0].requests.read().is_empty());
 }
 
 #[test]
@@ -1657,7 +1407,7 @@ fn test_tx_forward_around_epoch_boundary() {
         signer.public_key(),
         genesis_hash,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
 
     for i in 1..epoch_length * 2 {
         let block = env.clients[0].produce_block(i).unwrap().unwrap();
@@ -1676,12 +1426,9 @@ fn test_tx_forward_around_epoch_boundary() {
         1,
         genesis_hash,
     );
-    assert_eq!(
-        env.tx_request_handlers[2].process_tx(tx, false, false),
-        ProcessTxResponse::RequestRouted
-    );
+    assert_eq!(env.rpc_handlers[2].process_tx(tx, false, false), ProcessTxResponse::RequestRouted);
     let mut accounts_to_forward = HashSet::new();
-    for request in env.network_adapters[2].requests.read().unwrap().iter() {
+    for request in env.network_adapters[2].requests.read().iter() {
         if let PeerManagerMessageRequest::NetworkRequests(NetworkRequests::ForwardTx(
             account_id,
             _,
@@ -1844,7 +1591,7 @@ fn test_gas_price_change() {
             - send_money_total_gas as u128 * min_gas_price,
         genesis_hash,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     env.produce_block(0, 1);
     let tx = SignedTransaction::send_money(
         2,
@@ -1854,7 +1601,7 @@ fn test_gas_price_change() {
         1,
         genesis_hash,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     for i in 2..=4 {
         env.produce_block(0, i);
     }
@@ -1887,10 +1634,7 @@ fn test_gas_price_overflow() {
             1,
             genesis_hash,
         );
-        assert_eq!(
-            env.tx_request_handlers[0].process_tx(tx, false, false),
-            ProcessTxResponse::ValidTx
-        );
+        assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
         let block = env.clients[0].produce_block(i).unwrap().unwrap();
         assert!(block.header().next_gas_price() <= max_gas_price);
         env.process_block(0, block, Provenance::PRODUCED);
@@ -2022,7 +1766,7 @@ fn test_data_reset_before_state_sync() {
         &signer,
         genesis_hash,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     for i in 1..5 {
         env.produce_block(0, i);
     }
@@ -2137,7 +1881,7 @@ fn test_validate_chunk_extra() {
         *genesis_block.hash(),
         0,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     let mut last_block = genesis_block;
     for i in 1..3 {
         last_block = env.clients[0].produce_block(i).unwrap().unwrap();
@@ -2161,7 +1905,7 @@ fn test_validate_chunk_extra() {
         0,
     );
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(function_call_tx, false, false),
+        env.rpc_handlers[0].process_tx(function_call_tx, false, false),
         ProcessTxResponse::ValidTx
     );
     for i in 3..5 {
@@ -2178,9 +1922,9 @@ fn test_validate_chunk_extra() {
     // Construct two blocks that contain the same chunk and make the chunk unavailable.
     let validator_signer = create_test_signer("test0");
     let next_height = last_block.header().height() + 1;
-    let ProduceChunkResult {
-        encoded_chunk, encoded_chunk_parts_paths: merkle_paths, receipts, ..
-    } = create_chunk_on_height(&mut env.clients[0], next_height);
+    let ProduceChunkResult { chunk, encoded_chunk_parts_paths: merkle_paths, receipts, .. } =
+        create_chunk_on_height(&mut env.clients[0], next_height);
+    let encoded_chunk = chunk.into_parts().1;
     let mut block1 = env.clients[0].produce_block(next_height).unwrap().unwrap();
     let mut block2 = env.clients[0].produce_block(next_height + 1).unwrap().unwrap();
 
@@ -2229,8 +1973,9 @@ fn test_validate_chunk_extra() {
     let chunk_header = encoded_chunk.cloned_header();
     let signer = env.clients[0].validator_signer.get();
     let validator_id = signer.as_ref().unwrap().validator_id().clone();
+    let chunk = ShardChunkWithEncoding::from_encoded_shard_chunk(encoded_chunk).unwrap();
     env.clients[0]
-        .persist_and_distribute_encoded_chunk(encoded_chunk, merkle_paths, receipts, validator_id)
+        .persist_and_distribute_encoded_chunk(chunk, merkle_paths, receipts, validator_id)
         .unwrap();
     env.clients[0].chain.blocks_with_missing_chunks.accept_chunk(&chunk_header.chunk_hash());
     env.clients[0].process_blocks_with_missing_chunks(None, &signer);
@@ -2246,10 +1991,7 @@ fn test_validate_chunk_extra() {
     let client = &mut env.clients[0];
     client
         .chunk_inclusion_tracker
-        .prepare_chunk_headers_ready_for_inclusion(
-            block1.hash(),
-            &mut client.chunk_endorsement_tracker,
-        )
+        .prepare_chunk_headers_ready_for_inclusion(block1.hash(), &client.chunk_endorsement_tracker)
         .unwrap();
     let block = client.produce_block_on(next_height + 2, *block1.hash()).unwrap().unwrap();
     let epoch_id = *block.header().epoch_id();
@@ -2316,10 +2058,7 @@ fn slow_test_catchup_gas_price_change() {
             *genesis_block.hash(),
         );
 
-        assert_eq!(
-            env.tx_request_handlers[0].process_tx(tx, false, false),
-            ProcessTxResponse::ValidTx
-        );
+        assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     }
     // We go up to the end of the next epoch because we want at least 3 more blocks from the start
     // (plus one more for nodes to create snapshots) if syncing to the current epoch's state
@@ -2456,10 +2195,7 @@ fn test_block_execution_outcomes() {
             *genesis_block.hash(),
         );
         tx_hashes.push(tx.get_hash());
-        assert_eq!(
-            env.tx_request_handlers[0].process_tx(tx, false, false),
-            ProcessTxResponse::ValidTx
-        );
+        assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     }
     for i in 1..4 {
         env.produce_block(0, i);
@@ -2550,10 +2286,7 @@ fn test_refund_receipts_processing() {
             *genesis_block.hash(),
         );
         tx_hashes.push(tx.get_hash());
-        assert_eq!(
-            env.tx_request_handlers[0].process_tx(tx, false, false),
-            ProcessTxResponse::ValidTx
-        );
+        assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     }
 
     // Make sure all transactions are processed.
@@ -2909,14 +2642,14 @@ fn produce_chunks(env: &mut TestEnv, epoch_id: &EpochId, height: u64) {
             .unwrap()
             .take_account_id();
 
-        let ProduceChunkResult { encoded_chunk, encoded_chunk_parts_paths, receipts, .. } =
-            create_chunk_on_height(env.client(&chunk_producer), height);
-
+        let produce_chunk_result = create_chunk_on_height(env.client(&chunk_producer), height);
+        let ProduceChunkResult { chunk, encoded_chunk_parts_paths, receipts } =
+            produce_chunk_result;
         for client in &mut env.clients {
             let validator_id = client.validator_signer.get().unwrap().validator_id().clone();
             client
                 .persist_and_distribute_encoded_chunk(
-                    encoded_chunk.clone(),
+                    chunk.clone(),
                     encoded_chunk_parts_paths.clone(),
                     receipts.clone(),
                     validator_id,
@@ -3009,7 +2742,7 @@ fn test_query_final_state() {
         100,
         *genesis_block.hash(),
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
 
     let mut blocks = vec![];
 
@@ -3082,13 +2815,14 @@ fn test_fork_receipt_ids() {
     // Construct two blocks that contain the same chunk and make the chunk unavailable.
     let validator_signer = create_test_signer("test0");
     let last_height = produced_block.header().height();
-    let ProduceChunkResult { encoded_chunk, .. } =
+    let ProduceChunkResult { chunk, .. } =
         create_chunk_on_height(&mut env.clients[0], last_height + 1);
+    let encoded_chunk = chunk.into_parts().1;
     let mut block1 = env.clients[0].produce_block(last_height + 1).unwrap().unwrap();
     let mut block2 = env.clients[0].produce_block(last_height + 2).unwrap().unwrap();
 
     // Process two blocks on two different forks that contain the same chunk.
-    for block in vec![&mut block2, &mut block1].into_iter() {
+    for block in [&mut block2, &mut block1] {
         let mut chunk_header = encoded_chunk.cloned_header();
         *chunk_header.height_included_mut() = block.header().height();
         let chunk_headers = vec![chunk_header];
@@ -3139,13 +2873,13 @@ fn test_fork_execution_outcome() {
     // Construct two blocks that contain the same chunk and make the chunk unavailable.
     let validator_signer = create_test_signer("test0");
     let next_height = last_height + 1;
-    let ProduceChunkResult { encoded_chunk, .. } =
-        create_chunk_on_height(&mut env.clients[0], next_height);
+    let ProduceChunkResult { chunk, .. } = create_chunk_on_height(&mut env.clients[0], next_height);
+    let encoded_chunk = chunk.into_parts().1;
     let mut block1 = env.clients[0].produce_block(last_height + 1).unwrap().unwrap();
     let mut block2 = env.clients[0].produce_block(last_height + 2).unwrap().unwrap();
 
     // Process two blocks on two different forks that contain the same chunk.
-    for block in vec![&mut block2, &mut block1].into_iter() {
+    for block in [&mut block2, &mut block1] {
         let mut chunk_header = encoded_chunk.cloned_header();
         *chunk_header.height_included_mut() = block.header().height();
         let chunk_headers = vec![chunk_header];
@@ -3208,7 +2942,7 @@ fn prepare_env_with_transaction() -> (TestEnv, CryptoHash) {
         *genesis_block.hash(),
     );
     let tx_hash = tx.get_hash();
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     (env, tx_hash)
 }
 
@@ -3230,7 +2964,7 @@ fn test_not_broadcast_block_on_accept() {
     for i in 0..2 {
         env.process_block(i, b1.clone(), Provenance::NONE);
     }
-    assert!(network_adapter.requests.read().unwrap().is_empty());
+    assert!(network_adapter.requests.read().is_empty());
 }
 
 #[test]
@@ -3400,7 +3134,7 @@ fn test_validator_stake_host_function() {
         0,
     );
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(signed_transaction, false, false),
+        env.rpc_handlers[0].process_tx(signed_transaction, false, false),
         ProcessTxResponse::ValidTx
     );
     for i in 0..3 {
@@ -3435,48 +3169,6 @@ fn test_catchup_no_sharding_change() {
                 .unwrap(),
             vec![]
         );
-    }
-}
-
-/// Run `gc_num_epochs_to_keep` epochs + several blocks.
-/// Start a second env from the "snapshot" of the first.
-/// Run one more epoch.
-/// "Restart from the snapshot" is to ensure that we can continue producing blocks without relying on caches.
-#[test]
-fn test_long_chain_with_restart_from_snapshot() {
-    init_test_logger();
-
-    let epoch_length = 25;
-
-    let mut genesis = Genesis::test(vec!["test0".parse().unwrap()], 1);
-
-    genesis.config.epoch_length = epoch_length;
-    let mut env1 =
-        TestEnv::builder(&genesis.config).nightshade_runtimes(&genesis).archive(false).build();
-
-    // In TestEnv `gc_blocks_limit` defaults to 100.
-    // That means that whole epoch will be garbage collected in one block.
-    // We want this test to have "more realistic" snapshot setup, where last kept epoch is only partially garbage collected.
-    //
-    // `gc_blocks_limit = 2` is the default setup in production.
-    env1.clients[0].config.gc.gc_blocks_limit = 2;
-
-    let max_height = epoch_length * env1.clients[0].config.gc.gc_num_epochs_to_keep + 3;
-
-    for h in 1..max_height {
-        let block = env1.clients[0].produce_block(h).unwrap().unwrap();
-        env1.process_block(0, block.clone(), Provenance::PRODUCED);
-    }
-
-    let mut env2 = TestEnv::builder(&genesis.config)
-        .stores(vec![env1.clients[0].chain.chain_store().store()])
-        .nightshade_runtimes(&genesis)
-        .archive(false)
-        .build();
-
-    for h in max_height..(max_height + epoch_length) {
-        let block = env2.clients[0].produce_block(h).unwrap().unwrap();
-        env2.process_block(0, block.clone(), Provenance::PRODUCED);
     }
 }
 
@@ -3730,7 +3422,7 @@ mod contract_precompilation_tests {
             *block.hash(),
         );
         assert_eq!(
-            env.tx_request_handlers[0].process_tx(delete_account_tx, false, false),
+            env.rpc_handlers[0].process_tx(delete_account_tx, false, false),
             ProcessTxResponse::ValidTx
         );
         // `height` is the first block of a new epoch (which has not been produced yet).

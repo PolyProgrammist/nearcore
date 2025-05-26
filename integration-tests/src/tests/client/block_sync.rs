@@ -23,7 +23,7 @@ use crate::env::test_env::TestEnv;
 fn collect_hashes_from_network_adapter(
     network_adapter: &MockPeerManagerAdapter,
 ) -> HashSet<CryptoHash> {
-    let mut network_request = network_adapter.requests.write().unwrap();
+    let mut network_request = network_adapter.requests.write();
     network_request
         .drain(..)
         .map(|request| match request {
@@ -177,7 +177,7 @@ fn test_block_sync_archival() {
     assert_eq!(requested_block_hashes, HashSet::new());
 
     let mut peer_infos = create_highest_height_peer_infos(2);
-    for peer in peer_infos.iter_mut() {
+    for peer in &mut peer_infos {
         peer.archival = true;
     }
 
