@@ -37,20 +37,6 @@ use near_primitives::hash::CryptoHash;
 
 use near_chain_configs::GenesisConfig;
 
-#[cfg(not(feature = "progenitor"))]
-use near_jsonrpc_primitives::{
-    errors::RpcError,
-    types::{
-        changes::RpcStateChangesInBlockResponse, light_client::RpcLightClientExecutionProofRequest,
-    },
-};
-
-mod progenitor_types;
-#[cfg(feature = "progenitor")]
-use progenitor_types::{
-    RpcError, RpcLightClientExecutionProofRequest, RpcStateChangesInBlockResponse,
-};
-
 #[derive(JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseEither<T, E> {
