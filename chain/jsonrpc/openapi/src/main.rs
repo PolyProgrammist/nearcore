@@ -33,6 +33,13 @@ use near_jsonrpc_primitives::types::{
         RpcValidatorsOrderedResponse,
     },
 };
+use near_jsonrpc_primitives::{
+    errors::RpcError,
+    types::{
+        changes::RpcStateChangesInBlockResponse, light_client::RpcLightClientExecutionProofRequest,
+    },
+};
+
 use near_primitives::hash::CryptoHash;
 
 use near_chain_configs::GenesisConfig;
@@ -71,6 +78,15 @@ impl schemars::transform::Transform for ReplaceNullType {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AddTitles;
+
+impl schemars::transform::Transform for AddTitles {
+    fn transform(&mut self, schema: &mut schemars::Schema) {
+        println!("Transforming schema: {:?}", schema);
+    }
+}
+
 fn schemas_map<T: JsonSchema>() -> SchemasMap {
     let mut settings = schemars::generate::SchemaSettings::openapi3();
     settings.transforms.insert(
@@ -86,6 +102,7 @@ fn schemas_map<T: JsonSchema>() -> SchemasMap {
         }),
     );
     settings.transforms.push(Box::new(ReplaceNullType));
+    settings.transforms.push(Box::new(AddTitles));
     settings.transforms.push(Box::new(|s: &mut schemars::Schema| {
         let obj = s.ensure_object();
         if !obj.get("$defs").is_none() {
