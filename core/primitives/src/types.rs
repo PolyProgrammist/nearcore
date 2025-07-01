@@ -1062,6 +1062,7 @@ pub struct ChunkExtraV1 {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum BlockId {
+    #[schemars(title = "block_height")]
     Height(BlockHeight),
     Hash(CryptoHash),
 }
@@ -1221,7 +1222,9 @@ pub enum ValidatorKickoutReason {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransactionOrReceiptId {
+    #[schemars(title = "transaction")]
     Transaction { transaction_hash: CryptoHash, sender_id: AccountId },
+    #[schemars(title = "receipt")]
     Receipt { receipt_id: CryptoHash, receiver_id: AccountId },
 }
 

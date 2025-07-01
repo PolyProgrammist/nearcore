@@ -2781,6 +2781,7 @@
           {
             "format": "uint64",
             "minimum": 0,
+            "title": "block_height",
             "type": "integer"
           },
           {
@@ -9020,6 +9021,7 @@
               "block_id",
               "shard_id"
             ],
+            "title": "block_shard_id",
             "type": "object"
           },
           {
@@ -9031,6 +9033,7 @@
             "required": [
               "chunk_id"
             ],
+            "title": "chunk_hash",
             "type": "object"
           }
         ],
@@ -9585,6 +9588,7 @@
               "block_id",
               "shard_id"
             ],
+            "title": "block_shard_id",
             "type": "object"
           },
           {
@@ -9596,6 +9600,7 @@
             "required": [
               "chunk_id"
             ],
+            "title": "chunk_hash",
             "type": "object"
           }
         ],
@@ -9799,6 +9804,7 @@
               "transaction_hash",
               "sender_id"
             ],
+            "title": "transaction",
             "type": "object"
           },
           {
@@ -9821,6 +9827,7 @@
               "receipt_id",
               "receiver_id"
             ],
+            "title": "receipt",
             "type": "object"
           }
         ],
