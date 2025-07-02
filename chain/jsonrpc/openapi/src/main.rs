@@ -53,6 +53,7 @@ pub enum ResponseEither<T, E> {
 
 #[derive(JsonSchema)]
 #[allow(dead_code)]
+#[schemars(rename = "JsonRpcResponse_for_{T}_and_{E}")]
 struct JsonRpcResponse<T, E> {
     jsonrpc: String,
     id: String,
@@ -83,7 +84,12 @@ pub struct AddTitles;
 
 impl schemars::transform::Transform for AddTitles {
     fn transform(&mut self, schema: &mut schemars::Schema) {
-        println!("Transforming schema: {:?}", schema);
+        if let Some(value) = schema.get("title") {
+            if value == "RpcQueryRequest" {
+                // println!("Transforming schema: {:?}", schema);
+            }
+        }
+        
     }
 }
 
