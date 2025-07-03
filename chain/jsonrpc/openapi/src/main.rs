@@ -86,7 +86,7 @@ impl schemars::transform::Transform for AddTitles {
     fn transform(&mut self, schema: &mut schemars::Schema) {
         if let Some(value) = schema.get("title") {
             if value == "RpcQueryRequest" {
-                // println!("Transforming schema: {:?}", schema);
+                println!("Transforming schema: {:?}", serde_json::to_value(schema.get("$defs").unwrap().get("AccountId")).unwrap());
             }
         }
         
@@ -449,5 +449,5 @@ fn main() {
     let path_schema = whole_spec(all_schemas, all_paths);
 
     let spec_json = serde_json::to_string_pretty(&path_schema).unwrap();
-    println!("{}", spec_json);
+    // println!("{}", spec_json);
 }
