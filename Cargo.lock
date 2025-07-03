@@ -4676,6 +4676,7 @@ dependencies = [
 name = "near-jsonrpc-openapi-spec"
 version = "0.0.0"
 dependencies = [
+ "itertools 0.12.1",
  "near-chain-configs",
  "near-crypto",
  "near-jsonrpc-primitives",

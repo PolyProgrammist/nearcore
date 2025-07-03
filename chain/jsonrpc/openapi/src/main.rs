@@ -1,5 +1,6 @@
 use okapi::openapi3::{OpenApi, SchemaObject};
 use schemars::JsonSchema;
+use itertools::Itertools;
 use schemars::transform::transform_subschemas;
 use serde_json::json;
 
@@ -86,10 +87,41 @@ impl schemars::transform::Transform for AddTitles {
     fn transform(&mut self, schema: &mut schemars::Schema) {
         if let Some(value) = schema.get("title") {
             if value == "RpcQueryRequest" {
-                println!("Transforming schema: {:?}", serde_json::to_value(schema.get("$defs").unwrap().get("AccountId")).unwrap());
+                // println!(
+                //     "Transforming schema: {:?}",
+                //     serde_json::to_value(schema.get("$defs").unwrap().get("AccountId")).unwrap()
+                // );
+                match serde_json::to_value(schema.clone()).unwrap() {
+                    serde_json::Value::Object(map) => {
+                        let mut new_map = map.clone();
+                        if let Some(serde_json::Value::Array(all_of)) = new_map.get_mut("allOf") {
+                            let mut all_oneofs = vec![];
+                            // println!("Found allOf in schema");
+                            for item in all_of {
+                                if let serde_json::Value::Object(sub_obj) = item {
+                                    if let Some(serde_json::Value::Array(one_of)) =
+                                        sub_obj.get("oneOf")
+                                    {
+                                        all_oneofs.push(one_of.clone());
+                                        // println!("Found oneOf in allOf");
+                                    }
+                                }
+                            }
+                            let combinations = Itertools::multi_cartesian_product(all_oneofs.iter().map(|v: &Vec<serde_json::Value>| v.iter()));
+                            let new_oneof: Vec<serde_json::Value> = combinations.into_iter().map(|combo| {
+                                let combo_vals: Vec<serde_json::Value> = combo.into_iter().cloned().collect();
+                                serde_json::json!({ "allOf": combo_vals })
+                            }).collect();
+                            schema.remove("allOf");
+                            schema.insert("oneOf".to_string(), serde_json::Value::Array(new_oneof));
+                        }
+                    }
+                    _ => {
+                        println!("not matched");
+                    }
+                }
             }
         }
-        
     }
 }
 
@@ -449,5 +481,5 @@ fn main() {
     let path_schema = whole_spec(all_schemas, all_paths);
 
     let spec_json = serde_json::to_string_pretty(&path_schema).unwrap();
-    // println!("{}", spec_json);
+    println!("{}", spec_json);
 }
