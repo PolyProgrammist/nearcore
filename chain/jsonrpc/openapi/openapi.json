@@ -10419,9 +10419,9 @@
         "type": "object"
       },
       "RpcQueryRequest": {
-        "allOf": [
+        "oneOf": [
           {
-            "oneOf": [
+            "allOf": [
               {
                 "properties": {
                   "block_id": {
@@ -10433,32 +10433,6 @@
                 ],
                 "type": "object"
               },
-              {
-                "properties": {
-                  "finality": {
-                    "$ref": "#/components/schemas/Finality"
-                  }
-                },
-                "required": [
-                  "finality"
-                ],
-                "type": "object"
-              },
-              {
-                "properties": {
-                  "sync_checkpoint": {
-                    "$ref": "#/components/schemas/SyncCheckpoint"
-                  }
-                },
-                "required": [
-                  "sync_checkpoint"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          {
-            "oneOf": [
               {
                 "properties": {
                   "account_id": {
@@ -10474,6 +10448,22 @@
                 "required": [
                   "request_type",
                   "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_account_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -10492,6 +10482,22 @@
                 "required": [
                   "request_type",
                   "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_code_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -10519,6 +10525,22 @@
                   "prefix_base64"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "view_state_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -10541,6 +10563,22 @@
                   "public_key"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "view_access_key_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -10557,6 +10595,22 @@
                 "required": [
                   "request_type",
                   "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_access_key_list_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -10585,6 +10639,22 @@
                   "args_base64"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "call_function_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -10601,6 +10671,22 @@
                 "required": [
                   "request_type",
                   "code_hash"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_global_contract_code_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -10622,7 +10708,590 @@
                 ],
                 "type": "object"
               }
-            ]
+            ],
+            "title": "view_global_contract_code_by_account_id_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_account"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_account_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_code"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_code_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "include_proof": {
+                    "type": "boolean"
+                  },
+                  "prefix_base64": {
+                    "$ref": "#/components/schemas/StoreKey"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_state"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "prefix_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_state_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "public_key": {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_access_key"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "public_key"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_access_key_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_access_key_list"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_access_key_list_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "args_base64": {
+                    "$ref": "#/components/schemas/FunctionArgs"
+                  },
+                  "method_name": {
+                    "type": "string"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "call_function"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "method_name",
+                  "args_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "call_function_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "code_hash": {
+                    "$ref": "#/components/schemas/CryptoHash"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_global_contract_code"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "code_hash"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_global_contract_code_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_global_contract_code_by_account_id"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_global_contract_code_by_account_id_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_account"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_account_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_code"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_code_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "include_proof": {
+                    "type": "boolean"
+                  },
+                  "prefix_base64": {
+                    "$ref": "#/components/schemas/StoreKey"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_state"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "prefix_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_state_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "public_key": {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_access_key"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "public_key"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_access_key_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_access_key_list"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_access_key_list_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "args_base64": {
+                    "$ref": "#/components/schemas/FunctionArgs"
+                  },
+                  "method_name": {
+                    "type": "string"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "call_function"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id",
+                  "method_name",
+                  "args_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "call_function_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "code_hash": {
+                    "$ref": "#/components/schemas/CryptoHash"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_global_contract_code"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "code_hash"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_global_contract_code_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_id": {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  "request_type": {
+                    "enum": [
+                      "view_global_contract_code_by_account_id"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "request_type",
+                  "account_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "view_global_contract_code_by_account_id_by_sync_checkpoint"
           }
         ],
         "title": "RpcQueryRequest",

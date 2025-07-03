@@ -1,6 +1,6 @@
+use itertools::Itertools;
 use okapi::openapi3::{OpenApi, SchemaObject};
 use schemars::JsonSchema;
-use itertools::Itertools;
 use schemars::transform::transform_subschemas;
 use serde_json::json;
 
@@ -82,6 +82,38 @@ impl schemars::transform::Transform for ReplaceNullType {
 
 #[derive(Debug, Clone)]
 pub struct AddTitles;
+fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>) {
+    if let Some(serde_json::Value::Array(all_of)) = allof_obj.get_mut("allOf") {
+        let mut enum_value: Option<String> = None;
+        let mut other_props: Vec<String> = Vec::new();
+
+        for item in all_of {
+            if let serde_json::Value::Object(item_obj) = item {
+                if let Some(serde_json::Value::Object(props)) = item_obj.get("properties") {
+                    if let Some(req_type_obj) =
+                        props.get("request_type").and_then(|v| v.as_object())
+                    {
+                        if let Some(serde_json::Value::Array(enum_arr)) = req_type_obj.get("enum") {
+                            if let Some(serde_json::Value::String(s)) = enum_arr.get(0) {
+                                enum_value = Some(s.clone());
+                            }
+                        }
+                    } else {
+                        // take the name of the first property
+                        if let Some((first_prop_name, _)) = props.iter().next() {
+                            other_props.push(first_prop_name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(enum_val) = enum_value {
+            let title = format!("{}_by_{}", enum_val, other_props.join("_and_"));
+            allof_obj.insert("title".to_string(), serde_json::Value::String(title));
+        }
+    }
+}
 
 impl schemars::transform::Transform for AddTitles {
     fn transform(&mut self, schema: &mut schemars::Schema) {
@@ -107,11 +139,23 @@ impl schemars::transform::Transform for AddTitles {
                                     }
                                 }
                             }
-                            let combinations = Itertools::multi_cartesian_product(all_oneofs.iter().map(|v: &Vec<serde_json::Value>| v.iter()));
-                            let new_oneof: Vec<serde_json::Value> = combinations.into_iter().map(|combo| {
-                                let combo_vals: Vec<serde_json::Value> = combo.into_iter().cloned().collect();
-                                serde_json::json!({ "allOf": combo_vals })
-                            }).collect();
+                            let combinations = Itertools::multi_cartesian_product(
+                                all_oneofs.iter().map(|v: &Vec<serde_json::Value>| v.iter()),
+                            );
+                            let new_oneof: Vec<serde_json::Value> = combinations
+                                .into_iter()
+                                .map(|combo| {
+                                    let combo_vals: Vec<serde_json::Value> =
+                                        combo.into_iter().cloned().collect();
+                                    let mut obj = serde_json::Map::new();
+                                    obj.insert(
+                                        "allOf".to_string(),
+                                        serde_json::Value::Array(combo_vals),
+                                    );
+                                    add_title_to_allof(&mut obj);
+                                    serde_json::Value::Object(obj)
+                                })
+                                .collect();
                             schema.remove("allOf");
                             schema.insert("oneOf".to_string(), serde_json::Value::Array(new_oneof));
                         }
