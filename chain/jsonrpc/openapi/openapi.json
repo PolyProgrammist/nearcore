@@ -11484,9 +11484,10 @@
         "type": "object"
       },
       "RpcStateChangesInBlockByTypeRequest": {
-        "allOf": [
+        "description": "It is a [serializable view] of [`StateChangesRequest`].\n\n[serializable view]: ./index.html\n[`StateChangesRequest`]: ../types/struct.StateChangesRequest.html",
+        "oneOf": [
           {
-            "oneOf": [
+            "allOf": [
               {
                 "properties": {
                   "block_id": {
@@ -11498,32 +11499,6 @@
                 ],
                 "type": "object"
               },
-              {
-                "properties": {
-                  "finality": {
-                    "$ref": "#/components/schemas/Finality"
-                  }
-                },
-                "required": [
-                  "finality"
-                ],
-                "type": "object"
-              },
-              {
-                "properties": {
-                  "sync_checkpoint": {
-                    "$ref": "#/components/schemas/SyncCheckpoint"
-                  }
-                },
-                "required": [
-                  "sync_checkpoint"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          {
-            "oneOf": [
               {
                 "properties": {
                   "account_ids": {
@@ -11542,6 +11517,22 @@
                 "required": [
                   "changes_type",
                   "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "account_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -11565,6 +11556,22 @@
                   "keys"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "single_access_key_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -11584,6 +11591,22 @@
                 "required": [
                   "changes_type",
                   "keys"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "single_gas_key_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -11607,6 +11630,22 @@
                   "account_ids"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "all_access_key_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -11628,6 +11667,22 @@
                   "account_ids"
                 ],
                 "type": "object"
+              }
+            ],
+            "title": "all_gas_key_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
+                ],
+                "type": "object"
               },
               {
                 "properties": {
@@ -11647,6 +11702,22 @@
                 "required": [
                   "changes_type",
                   "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "contract_code_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "block_id": {
+                    "$ref": "#/components/schemas/BlockId"
+                  }
+                },
+                "required": [
+                  "block_id"
                 ],
                 "type": "object"
               },
@@ -11675,10 +11746,536 @@
                 ],
                 "type": "object"
               }
-            ]
+            ],
+            "title": "data_changes_by_block_id"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "account_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "account_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "changes_type": {
+                    "enum": [
+                      "single_access_key_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "keys": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountWithPublicKey"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "keys"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "single_access_key_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "changes_type": {
+                    "enum": [
+                      "single_gas_key_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "keys": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountWithPublicKey"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "keys"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "single_gas_key_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "all_access_key_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "all_access_key_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "all_gas_key_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "all_gas_key_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "contract_code_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "contract_code_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "finality": {
+                    "$ref": "#/components/schemas/Finality"
+                  }
+                },
+                "required": [
+                  "finality"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "data_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "key_prefix_base64": {
+                    "$ref": "#/components/schemas/StoreKey"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids",
+                  "key_prefix_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "data_changes_by_finality"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "account_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "account_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "changes_type": {
+                    "enum": [
+                      "single_access_key_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "keys": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountWithPublicKey"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "keys"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "single_access_key_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "changes_type": {
+                    "enum": [
+                      "single_gas_key_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "keys": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountWithPublicKey"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "keys"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "single_gas_key_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "all_access_key_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "all_access_key_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "all_gas_key_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "all_gas_key_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "contract_code_changes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "contract_code_changes_by_sync_checkpoint"
+          },
+          {
+            "allOf": [
+              {
+                "properties": {
+                  "sync_checkpoint": {
+                    "$ref": "#/components/schemas/SyncCheckpoint"
+                  }
+                },
+                "required": [
+                  "sync_checkpoint"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountId"
+                    },
+                    "type": "array"
+                  },
+                  "changes_type": {
+                    "enum": [
+                      "data_changes"
+                    ],
+                    "type": "string"
+                  },
+                  "key_prefix_base64": {
+                    "$ref": "#/components/schemas/StoreKey"
+                  }
+                },
+                "required": [
+                  "changes_type",
+                  "account_ids",
+                  "key_prefix_base64"
+                ],
+                "type": "object"
+              }
+            ],
+            "title": "data_changes_by_sync_checkpoint"
           }
         ],
-        "description": "It is a [serializable view] of [`StateChangesRequest`].\n\n[serializable view]: ./index.html\n[`StateChangesRequest`]: ../types/struct.StateChangesRequest.html",
         "title": "RpcStateChangesInBlockByTypeRequest",
         "type": "object"
       },

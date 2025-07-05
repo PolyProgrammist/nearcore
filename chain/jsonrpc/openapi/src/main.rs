@@ -82,7 +82,7 @@ impl schemars::transform::Transform for ReplaceNullType {
 
 #[derive(Debug, Clone)]
 pub struct AddTitles;
-fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>) {
+fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>, enum_name: String) {
     if let Some(serde_json::Value::Array(all_of)) = allof_obj.get_mut("allOf") {
         let mut enum_value: Option<String> = None;
         let mut other_props: Vec<String> = Vec::new();
@@ -91,7 +91,7 @@ fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>
             if let serde_json::Value::Object(item_obj) = item {
                 if let Some(serde_json::Value::Object(props)) = item_obj.get("properties") {
                     if let Some(req_type_obj) =
-                        props.get("request_type").and_then(|v| v.as_object())
+                        props.get(&enum_name).and_then(|v| v.as_object())
                     {
                         if let Some(serde_json::Value::Array(enum_arr)) = req_type_obj.get("enum") {
                             if let Some(serde_json::Value::String(s)) = enum_arr.get(0) {
@@ -115,57 +115,66 @@ fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>
     }
 }
 
-impl schemars::transform::Transform for AddTitles {
-    fn transform(&mut self, schema: &mut schemars::Schema) {
-        if let Some(value) = schema.get("title") {
-            if value == "RpcQueryRequest" {
-                // println!(
-                //     "Transforming schema: {:?}",
-                //     serde_json::to_value(schema.get("$defs").unwrap().get("AccountId")).unwrap()
-                // );
-                match serde_json::to_value(schema.clone()).unwrap() {
-                    serde_json::Value::Object(map) => {
-                        let mut new_map = map.clone();
-                        if let Some(serde_json::Value::Array(all_of)) = new_map.get_mut("allOf") {
-                            let mut all_oneofs = vec![];
-                            // println!("Found allOf in schema");
-                            for item in all_of {
-                                if let serde_json::Value::Object(sub_obj) = item {
-                                    if let Some(serde_json::Value::Array(one_of)) =
-                                        sub_obj.get("oneOf")
-                                    {
-                                        all_oneofs.push(one_of.clone());
-                                        // println!("Found oneOf in allOf");
-                                    }
+fn add_titles(schema: &mut schemars::Schema, title_value: String, enum_name: String) {
+    if let Some(value) = schema.get("title") {
+        if value == title_value.as_str() {
+            match serde_json::to_value(schema.clone()).unwrap() {
+                serde_json::Value::Object(map) => {
+                    let mut new_map = map.clone();
+                    if let Some(serde_json::Value::Array(all_of)) = new_map.get_mut("allOf") {
+                        let mut all_oneofs = vec![];
+                        // println!("Found allOf in schema");
+                        for item in all_of {
+                            if let serde_json::Value::Object(sub_obj) = item {
+                                if let Some(serde_json::Value::Array(one_of)) =
+                                    sub_obj.get("oneOf")
+                                {
+                                    all_oneofs.push(one_of.clone());
+                                    // println!("Found oneOf in allOf");
                                 }
                             }
-                            let combinations = Itertools::multi_cartesian_product(
-                                all_oneofs.iter().map(|v: &Vec<serde_json::Value>| v.iter()),
-                            );
-                            let new_oneof: Vec<serde_json::Value> = combinations
-                                .into_iter()
-                                .map(|combo| {
-                                    let combo_vals: Vec<serde_json::Value> =
-                                        combo.into_iter().cloned().collect();
-                                    let mut obj = serde_json::Map::new();
-                                    obj.insert(
-                                        "allOf".to_string(),
-                                        serde_json::Value::Array(combo_vals),
-                                    );
-                                    add_title_to_allof(&mut obj);
-                                    serde_json::Value::Object(obj)
-                                })
-                                .collect();
-                            schema.remove("allOf");
-                            schema.insert("oneOf".to_string(), serde_json::Value::Array(new_oneof));
                         }
+                        let combinations = Itertools::multi_cartesian_product(
+                            all_oneofs.iter().map(|v: &Vec<serde_json::Value>| v.iter()),
+                        );
+                        let new_oneof: Vec<serde_json::Value> = combinations
+                            .into_iter()
+                            .map(|combo| {
+                                let combo_vals: Vec<serde_json::Value> =
+                                    combo.into_iter().cloned().collect();
+                                let mut obj = serde_json::Map::new();
+                                obj.insert(
+                                    "allOf".to_string(),
+                                    serde_json::Value::Array(combo_vals),
+                                );
+                                add_title_to_allof(&mut obj, enum_name.clone());
+                                serde_json::Value::Object(obj)
+                            })
+                            .collect();
+                        schema.remove("allOf");
+                        schema.insert("oneOf".to_string(), serde_json::Value::Array(new_oneof));
                     }
-                    _ => {
-                        println!("not matched");
-                    }
+                }
+                _ => {
+                    println!("not matched");
                 }
             }
         }
+    }
+}
+
+impl schemars::transform::Transform for AddTitles {
+    fn transform(&mut self, schema: &mut schemars::Schema) {
+        add_titles(
+            schema,
+            "RpcStateChangesInBlockByTypeRequest".to_string(),
+            "changes_type".to_string(),
+        );
+        add_titles(
+            schema,
+            "RpcQueryRequest".to_string(),
+            "request_type".to_string(),
+        );
     }
 }
 

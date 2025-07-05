@@ -4139,7 +4139,9 @@ dependencies = [
 
 [[package]]
 name = "near-account-id"
-version = "1.1.1"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4826896a974cd6d1c0d805cb8c177481e1d8d655cfeb3cc258f912b25649d2d3"
 dependencies = [
  "borsh",
  "schemars 1.0.3",
