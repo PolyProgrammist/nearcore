@@ -824,6 +824,7 @@
         "type": "object"
       },
       "AccessKeyInfoView": {
+        "description": "Describes information about an access key including the public key.",
         "properties": {
           "access_key": {
             "$ref": "#/components/schemas/AccessKeyView"
@@ -839,6 +840,7 @@
         "type": "object"
       },
       "AccessKeyList": {
+        "description": "Lists access keys",
         "properties": {
           "keys": {
             "items": {
@@ -877,6 +879,7 @@
         ]
       },
       "AccessKeyPermissionView": {
+        "description": "Describes the permission scope for an access key. Whether it is a function call or a full access key.",
         "oneOf": [
           {
             "enum": [
@@ -918,6 +921,7 @@
         ]
       },
       "AccessKeyView": {
+        "description": "Describes access key permission scope and nonce.",
         "properties": {
           "nonce": {
             "format": "uint64",
@@ -960,20 +964,33 @@
         "type": "object"
       },
       "AccountDataView": {
+        "description": "AccountData is a piece of global state that a validator\nsigns and broadcasts to the network. It is essentially\nthe data that a validator wants to share with the network.\nAll the nodes in the network are collecting the account data\nbroadcasted by the validators.\nSince the number of the validators is bounded and their\nidentity is known (and the maximal size of allowed AccountData is bounded)\nthe global state that is distributed in the form of AccountData is bounded\nas well.\nFind more information in the docs [here](https://github.com/near/nearcore/blob/560f7fc8f4b3106e0d5d46050688610b1f104ac6/chain/client/src/client.rs#L2232)",
         "properties": {
           "account_key": {
-            "$ref": "#/components/schemas/PublicKey"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            ],
+            "description": "Account key of the validator signing this AccountData."
           },
           "peer_id": {
-            "$ref": "#/components/schemas/PublicKey"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            ],
+            "description": "ID of the node that handles the account key (aka validator key)."
           },
           "proxies": {
+            "description": "Proxy nodes that are directly connected to the validator node\n(this list may include the validator node itself).\nTIER1 nodes should connect to one of the proxies to sent TIER1\nmessages to the validator.",
             "items": {
               "$ref": "#/components/schemas/Tier1ProxyView"
             },
             "type": "array"
           },
           "timestamp": {
+            "description": "UTC timestamp of when the AccountData has been signed.",
             "type": "string"
           }
         },
@@ -12741,6 +12758,7 @@
         "type": "object"
       },
       "RuntimeFeesConfigView": {
+        "description": "Describes different costs for the runtime",
         "properties": {
           "action_creation_config": {
             "allOf": [

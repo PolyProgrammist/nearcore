@@ -139,6 +139,7 @@ impl From<AccountView> for Account {
     }
 }
 
+/// Describes the permission scope for an access key. Whether it is a function call or a full access key.
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -189,6 +190,7 @@ impl From<AccessKeyPermissionView> for AccessKeyPermission {
     }
 }
 
+/// Describes access key permission scope and nonce.
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -286,6 +288,7 @@ pub struct QueryError {
     pub logs: Vec<String>,
 }
 
+/// Describes information about an access key including the public key.
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccessKeyInfoView {
@@ -293,6 +296,7 @@ pub struct AccessKeyInfoView {
     pub access_key: AccessKeyView,
 }
 
+/// Lists access keys
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccessKeyList {
@@ -462,12 +466,29 @@ pub struct Tier1ProxyView {
     pub peer_id: PublicKey,
 }
 
+/// AccountData is a piece of global state that a validator
+/// signs and broadcasts to the network. It is essentially
+/// the data that a validator wants to share with the network.
+/// All the nodes in the network are collecting the account data
+/// broadcasted by the validators.
+/// Since the number of the validators is bounded and their
+/// identity is known (and the maximal size of allowed AccountData is bounded)
+/// the global state that is distributed in the form of AccountData is bounded
+/// as well.
+/// Find more information in the docs [here](https://github.com/near/nearcore/blob/560f7fc8f4b3106e0d5d46050688610b1f104ac6/chain/client/src/client.rs#L2232)
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AccountDataView {
+    /// ID of the node that handles the account key (aka validator key).
     pub peer_id: PublicKey,
+    /// Proxy nodes that are directly connected to the validator node
+    /// (this list may include the validator node itself).
+    /// TIER1 nodes should connect to one of the proxies to sent TIER1
+    /// messages to the validator.
     pub proxies: Vec<Tier1ProxyView>,
+    /// Account key of the validator signing this AccountData.
     pub account_key: PublicKey,
+    /// UTC timestamp of when the AccountData has been signed.
     #[serde(with = "near_time::serde_utc_as_iso")]
     #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub timestamp: Utc,
