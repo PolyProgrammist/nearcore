@@ -646,6 +646,7 @@ pub struct RequestedStatePartsView {
     pub shard_requested_parts: HashMap<ShardId, Vec<PartElapsedTimeView>>,
 }
 
+/// Height and hash of a block
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BlockStatusView {
@@ -865,6 +866,7 @@ pub struct StatusResponse {
     pub detailed_debug_status: Option<DetailedDebugStatus>,
 }
 
+/// Contains main info about the block.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BlockHeaderView {
@@ -873,6 +875,7 @@ pub struct BlockHeaderView {
     pub epoch_id: CryptoHash,
     pub next_epoch_id: CryptoHash,
     pub hash: CryptoHash,
+    /// The hash of the previous Block
     pub prev_hash: CryptoHash,
     pub prev_state_root: CryptoHash,
     pub block_body_hash: Option<CryptoHash>,
@@ -913,6 +916,7 @@ pub struct BlockHeaderView {
     pub block_merkle_root: CryptoHash,
     pub epoch_sync_data_hash: Option<CryptoHash>,
     pub approvals: Vec<Option<Box<Signature>>>,
+    /// Signature of the block producer.
     pub signature: Signature,
     pub latest_protocol_version: ProtocolVersion,
     pub chunk_endorsements: Option<Vec<Vec<u8>>>,
@@ -998,6 +1002,7 @@ impl From<BlockHeaderView> for BlockHeader {
     }
 }
 
+/// A part of a state for the current head of a light client. More info [here](https://nomicon.io/ChainSpec/LightClient). 
 #[derive(
     PartialEq,
     Eq,
@@ -1011,7 +1016,9 @@ impl From<BlockHeaderView> for BlockHeader {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BlockHeaderInnerLiteView {
     pub height: BlockHeight,
+    /// The epoch to which the block that is the current known head belongs
     pub epoch_id: CryptoHash,
+    /// The epoch that will follow the current epoch
     pub next_epoch_id: CryptoHash,
     pub prev_state_root: CryptoHash,
     pub outcome_root: CryptoHash,
@@ -1020,7 +1027,9 @@ pub struct BlockHeaderInnerLiteView {
     #[serde(with = "dec_format")]
     #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub timestamp_nanosec: u64,
+    /// The hash of the block producers set for the next epoch
     pub next_bp_hash: CryptoHash,
+    /// The merkle root of all the block hashes
     pub block_merkle_root: CryptoHash,
 }
 
@@ -1223,6 +1232,7 @@ impl From<ChunkHeaderView> for ShardChunkHeader {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BlockView {
+    /// The AccountId of the author of the Block
     pub author: AccountId,
     pub header: BlockHeaderView,
     pub chunks: Vec<ChunkHeaderView>,
@@ -2380,6 +2390,7 @@ pub struct NextEpochValidatorInfo {
     pub shards: Vec<ShardId>,
 }
 
+/// A state for the current head of a light client. More info [here](https://nomicon.io/ChainSpec/LightClient). 
 #[derive(
     PartialEq,
     Eq,
@@ -2394,6 +2405,8 @@ pub struct NextEpochValidatorInfo {
 pub struct LightClientBlockView {
     pub prev_block_hash: CryptoHash,
     pub next_block_inner_hash: CryptoHash,
+    /// Inner part of the block header that gets hashed, split into two parts, one that is sent
+    ///    to light clients, and the rest
     pub inner_lite: BlockHeaderInnerLiteView,
     pub inner_rest_hash: CryptoHash,
     pub next_bps: Option<Vec<ValidatorStakeView>>,

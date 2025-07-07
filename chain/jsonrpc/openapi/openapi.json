@@ -1092,6 +1092,7 @@
         "type": "object"
       },
       "AccountWithPublicKey": {
+        "description": "Account ID with its public key.",
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
@@ -2467,6 +2468,7 @@
         ]
       },
       "AddKeyAction": {
+        "description": "An action that adds key with public key associated",
         "properties": {
           "access_key": {
             "allOf": [
@@ -2554,6 +2556,7 @@
         ]
       },
       "BandwidthRequestsV1": {
+        "description": "Version 1 for list of [`BandwidthRequest`]s.",
         "properties": {
           "requests": {
             "items": {
