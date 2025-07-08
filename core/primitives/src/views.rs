@@ -264,6 +264,7 @@ pub struct StateItem {
     pub value: StoreValue,
 }
 
+/// Resulting state values for a view state query request
 #[serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
@@ -275,6 +276,7 @@ pub struct ViewStateResult {
     pub proof: Vec<Arc<[u8]>>,
 }
 
+/// A result returned by contract method
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CallResult {
@@ -625,6 +627,7 @@ pub struct DownloadStatusView {
     pub done: bool,
 }
 
+/// Status of the [catchup](https://near.github.io/nearcore/architecture/how/sync.html#catchup) process
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CatchupStatusView {
@@ -1065,6 +1068,7 @@ impl From<BlockHeaderInnerLiteView> for BlockHeaderInnerLite {
     }
 }
 
+/// Contains main info about the chunk.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChunkHeaderView {
@@ -1615,6 +1619,7 @@ impl From<ExecutionStatus> for ExecutionStatusView {
     }
 }
 
+/// Shows gas profile. More info [here](https://near.github.io/nearcore/architecture/gas/gas_profile.html?highlight=WASM_HOST_COST#example-transaction-gas-profile).
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -1627,6 +1632,7 @@ impl From<ExecutionStatus> for ExecutionStatusView {
 )]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CostGasUsed {
+    /// Either ACTION_COST or WASM_HOST_COST.
     pub cost_category: String,
     pub cost: String,
     #[serde(with = "dec_format")]
@@ -2329,6 +2335,7 @@ pub struct ValidatorKickoutView {
     pub reason: ValidatorKickoutReason,
 }
 
+/// Describes information about the current epoch validator
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, ProtocolSchema)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CurrentEpochValidatorInfo {
@@ -2721,6 +2728,7 @@ pub struct SplitStorageInfoView {
     pub hot_db_kind: Option<String>,
 }
 
+/// Stores the congestion level of a shard. More info about congestion [here](https://near.github.io/nearcore/architecture/how/receipt-congestion.html?highlight=congestion#receipt-congestion)
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CongestionInfoView {
