@@ -478,7 +478,7 @@ fn main() {
         &mut all_schemas,
         &mut all_paths,
         "client_config".to_string(),
-        "Queries node client configuration".to_string(),
+        "Queries client node configuration".to_string(),
     );
     add_spec_for_path::<RpcStateChangesInBlockByTypeRequest, RpcStateChangesInBlockResponse>(
         &mut all_schemas,
@@ -502,31 +502,31 @@ fn main() {
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_congestion_level".to_string(),
-        "hey".to_string(),
+        "Queries the congestion level of a shard. More info about congestion [here](https://near.github.io/nearcore/architecture/how/receipt-congestion.html?highlight=congestion#receipt-congestion)".to_string(),
     );
     add_spec_for_path::<GenesisConfigRequest, GenesisConfig>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_genesis_config".to_string(),
-        "hey".to_string(),
+        "Get initial state and parameters for the genesis block".to_string(),
     );
     add_spec_for_path::<RpcLightClientExecutionProofRequest, RpcLightClientExecutionProofResponse>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_light_client_proof".to_string(),
-        "hey".to_string(),
+        "Returns the proofs for a transaction execution.".to_string(),
     );
     add_spec_for_path::<RpcLightClientBlockProofRequest, RpcLightClientBlockProofResponse>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_light_client_block_proof".to_string(),
-        "hey".to_string(),
+        "Returns the proofs for a transaction execution.".to_string(),
     );
     add_spec_for_path::<RpcProtocolConfigRequest, RpcProtocolConfigResponse>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_protocol_config".to_string(),
-        "hey".to_string(),
+        "A configuration that defines the protocol-level parameters such as gas/storage costs, limits, feature flags, other settings".to_string(),
     );
     add_spec_for_path::<RpcReceiptRequest, RpcReceiptResponse>(
         &mut all_schemas,
@@ -544,25 +544,25 @@ fn main() {
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_validators_ordered".to_string(),
-        "hey".to_string(),
+        "Returns the current epoch validators ordered in the block producer order with repetition. This endpoint is solely used for bridge currently and is not intended for other external use cases.".to_string(),
     );
     add_spec_for_path::<RpcMaintenanceWindowsRequest, RpcMaintenanceWindowsResponse>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_maintenance_windows".to_string(),
-        "hey".to_string(),
+        "Returns the future windows for maintenance in current epoch for the specified account. In the maintenance windows, the node will not be block producer or chunk producer".to_string(),
     );
     add_spec_for_path::<RpcSplitStorageInfoRequest, RpcSplitStorageInfoResponse>(
         &mut all_schemas,
         &mut all_paths,
         "EXPERIMENTAL_split_storage_info".to_string(),
-        "hey".to_string(),
+        "Contains the split storage information. More info on split storage [here](https://near-nodes.io/archival/split-storage-archival)".to_string(),
     );
     add_spec_for_path::<RpcQueryRequest, RpcQueryResponse>(
         &mut all_schemas,
         &mut all_paths,
         "query".to_string(),
-        """This module allows you to make generic requests to the network.
+        "This module allows you to make generic requests to the network.
 
 The `RpcQueryRequest` struct takes in a [`BlockReference`](https://docs.rs/near-primitives/0.12.0/near_primitives/types/enum.BlockReference.html) and a [`QueryRequest`](https://docs.rs/near-primitives/0.12.0/near_primitives/views/enum.QueryRequest.html).
 
@@ -574,7 +574,7 @@ The `QueryRequest` enum provides multiple variaints for performing the following
  - View the state of an account
  - View the `AccessKey` of an account
  - View the `AccessKeyList` of an account
- - Call a function in a contract deployed on the network.""".to_string(),
+ - Call a function in a contract deployed on the network.".to_string(),
     );
 
     let path_schema = whole_spec(all_schemas, all_paths);
