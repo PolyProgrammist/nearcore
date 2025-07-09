@@ -80,9 +80,286 @@ impl schemars::transform::Transform for ReplaceNullType {
     }
 }
 
+/// This struct is used to interchange `oneOf` and `allOf` in the OpenAPI schema. And also adds titles to the `allOf` schemas.
+/// If you have allOf [oneOf[A, B], oneOf[C, D]] it will transform it into: oneOf [allOf[A, C], allOf[A, D], allOf[B, C], allOf[B, D]].
+///
+/// For example, it will transform the following schema:
+/// ```json
+/// {
+///   "RpcQueryRequest": {
+///        "allOf": [
+///          {
+///            "oneOf": [
+///              {
+///                "properties": {
+///                  "block_id": {
+///                    "$ref": "#/components/schemas/BlockId"
+///                  }
+///                },
+///                "required": [
+///                  "block_id"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "finality": {
+///                    "$ref": "#/components/schemas/Finality"
+///                  }
+///                },
+///                "required": [
+///                  "finality"
+///                ],
+///                "type": "object"
+///              },
+///            ]
+///          },
+///          {
+///            "oneOf": [
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_account"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_code"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              },
+///            ]
+///          }
+///        ],
+///        "title": "RpcQueryRequest",
+///        "type": "object"
+///      }
+/// }
+/// ```
+/// into the following schema:
+/// ```json
+///      "RpcQueryRequest": {
+///        "oneOf": [
+///          {
+///            "allOf": [
+///              {
+///                "properties": {
+///                  "block_id": {
+///                    "$ref": "#/components/schemas/BlockId"
+///                  }
+///                },
+///                "required": [
+///                  "block_id"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_account"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              }
+///            ],
+///            "title": "view_account_by_block_id"
+///          },
+///          {
+///            "allOf": [
+///              {
+///                "properties": {
+///                  "block_id": {
+///                    "$ref": "#/components/schemas/BlockId"
+///                  }
+///                },
+///                "required": [
+///                  "block_id"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_code"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              }
+///            ],
+///            "title": "view_code_by_block_id"
+///          },
+///          {
+///            "allOf": [
+///              {
+///                "properties": {
+///                  "finality": {
+///                    "$ref": "#/components/schemas/Finality"
+///                  }
+///                },
+///                "required": [
+///                  "finality"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_account"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              }
+///            ],
+///            "title": "view_account_by_finality"
+///          },
+///          {
+///            "allOf": [
+///              {
+///                "properties": {
+///                  "finality": {
+///                    "$ref": "#/components/schemas/Finality"
+///                  }
+///                },
+///                "required": [
+///                  "finality"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_code"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              }
+///            ],
+///            "title": "view_code_by_finality"
+///          },
+///        ],
+///        "title": "RpcQueryRequest",
+///        "type": "object"
+///      },
 #[derive(Debug, Clone)]
-pub struct AddTitles;
-fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>, enum_name: String) {
+pub struct InterchangeOneOfsAndAllOfs;
+
+impl schemars::transform::Transform for InterchangeOneOfsAndAllOfs {
+    fn transform(&mut self, schema: &mut schemars::Schema) {
+        interchange_oneofs_and_allofs(
+            schema,
+            "RpcStateChangesInBlockByTypeRequest".to_string(),
+            "changes_type".to_string(),
+        );
+        interchange_oneofs_and_allofs(
+            schema,
+            "RpcQueryRequest".to_string(),
+            "request_type".to_string(),
+        );
+    }
+}
+
+/// Adds a title to the `allOf` object based on the first property of the first object and the enum value of the second object.
+/// For example, for the following object, the title will be `view_code_by_finality`:
+///            "allOf": [
+///              {
+///                "properties": {
+///                  "finality": {
+///                    "$ref": "#/components/schemas/Finality"
+///                  }
+///                },
+///                "required": [
+///                  "finality"
+///                ],
+///                "type": "object"
+///              },
+///              {
+///                "properties": {
+///                  "account_id": {
+///                    "$ref": "#/components/schemas/AccountId"
+///                  },
+///                  "request_type": {
+///                    "enum": [
+///                      "view_code"
+///                    ],
+///                    "type": "string"
+///                  }
+///                },
+///                "required": [
+///                  "request_type",
+///                  "account_id"
+///                ],
+///                "type": "object"
+///              }
+///            ],
+///          },
+fn add_title_to_allof(
+    allof_obj: &mut serde_json::Map<String, serde_json::Value>,
+    enum_name: String,
+) {
     if let Some(serde_json::Value::Array(all_of)) = allof_obj.get_mut("allOf") {
         let mut enum_value: Option<String> = None;
         let mut other_props: Vec<String> = Vec::new();
@@ -90,16 +367,13 @@ fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>
         for item in all_of {
             if let serde_json::Value::Object(item_obj) = item {
                 if let Some(serde_json::Value::Object(props)) = item_obj.get("properties") {
-                    if let Some(req_type_obj) =
-                        props.get(&enum_name).and_then(|v| v.as_object())
-                    {
+                    if let Some(req_type_obj) = props.get(&enum_name).and_then(|v| v.as_object()) {
                         if let Some(serde_json::Value::Array(enum_arr)) = req_type_obj.get("enum") {
                             if let Some(serde_json::Value::String(s)) = enum_arr.get(0) {
                                 enum_value = Some(s.clone());
                             }
                         }
                     } else {
-                        // take the name of the first property
                         if let Some((first_prop_name, _)) = props.iter().next() {
                             other_props.push(first_prop_name.clone());
                         }
@@ -115,7 +389,12 @@ fn add_title_to_allof(allof_obj: &mut serde_json::Map<String, serde_json::Value>
     }
 }
 
-fn add_titles(schema: &mut schemars::Schema, title_value: String, enum_name: String) {
+/// Interchanges `oneOf` and `allOf` in the schema for InterchangeOneOfsAndAllOfs transform
+fn interchange_oneofs_and_allofs(
+    schema: &mut schemars::Schema,
+    title_value: String,
+    enum_name: String,
+) {
     if let Some(value) = schema.get("title") {
         if value == title_value.as_str() {
             match serde_json::to_value(schema.clone()).unwrap() {
@@ -123,14 +402,11 @@ fn add_titles(schema: &mut schemars::Schema, title_value: String, enum_name: Str
                     let mut new_map = map.clone();
                     if let Some(serde_json::Value::Array(all_of)) = new_map.get_mut("allOf") {
                         let mut all_oneofs = vec![];
-                        // println!("Found allOf in schema");
                         for item in all_of {
                             if let serde_json::Value::Object(sub_obj) = item {
-                                if let Some(serde_json::Value::Array(one_of)) =
-                                    sub_obj.get("oneOf")
+                                if let Some(serde_json::Value::Array(one_of)) = sub_obj.get("oneOf")
                                 {
                                     all_oneofs.push(one_of.clone());
-                                    // println!("Found oneOf in allOf");
                                 }
                             }
                         }
@@ -155,26 +431,9 @@ fn add_titles(schema: &mut schemars::Schema, title_value: String, enum_name: Str
                         schema.insert("oneOf".to_string(), serde_json::Value::Array(new_oneof));
                     }
                 }
-                _ => {
-                    println!("not matched");
-                }
+                _ => {}
             }
         }
-    }
-}
-
-impl schemars::transform::Transform for AddTitles {
-    fn transform(&mut self, schema: &mut schemars::Schema) {
-        add_titles(
-            schema,
-            "RpcStateChangesInBlockByTypeRequest".to_string(),
-            "changes_type".to_string(),
-        );
-        add_titles(
-            schema,
-            "RpcQueryRequest".to_string(),
-            "request_type".to_string(),
-        );
     }
 }
 
@@ -193,7 +452,7 @@ fn schemas_map<T: JsonSchema>() -> SchemasMap {
         }),
     );
     settings.transforms.push(Box::new(ReplaceNullType));
-    settings.transforms.push(Box::new(AddTitles));
+    settings.transforms.push(Box::new(InterchangeOneOfsAndAllOfs));
     settings.transforms.push(Box::new(|s: &mut schemars::Schema| {
         let obj = s.ensure_object();
         if !obj.get("$defs").is_none() {
@@ -230,7 +489,7 @@ fn paths_map(
     request_schema_name: String,
     response_schema_name: String,
     method_name: String,
-    doc: String
+    doc: String,
 ) -> PathsMap {
     let request_body = okapi::openapi3::RequestBody {
         required: true,
@@ -295,7 +554,7 @@ fn add_spec_for_path_internal<RequestType: JsonSchema, ResponseType: JsonSchema>
     all_schemas: &mut SchemasMap,
     all_paths: &mut PathsMap,
     method_name: String,
-    doc: String
+    doc: String,
 ) {
     let mut request_map = schemas_map::<RequestType>();
     let response_map = schemas_map::<ResponseType>();
@@ -466,7 +725,8 @@ fn main() {
         &mut all_schemas,
         &mut all_paths,
         "tx".to_string(),
-        "Queries status of a transaction by hash and returns the final transaction result.".to_string(),
+        "Queries status of a transaction by hash and returns the final transaction result."
+            .to_string(),
     );
     add_spec_for_path::<RpcValidatorRequest, RpcValidatorResponse>(
         &mut all_schemas,

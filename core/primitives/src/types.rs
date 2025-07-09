@@ -1223,9 +1223,7 @@ pub enum ValidatorKickoutReason {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransactionOrReceiptId {
-    #[schemars(title = "transaction")]
     Transaction { transaction_hash: CryptoHash, sender_id: AccountId },
-    #[schemars(title = "receipt")]
     Receipt { receipt_id: CryptoHash, receiver_id: AccountId },
 }
 
