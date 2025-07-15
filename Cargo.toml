@@ -247,6 +247,7 @@ near-account-id = { git = "https://github.com/polyprogrammist/near-account-id-rs
     "serde",
     "borsh",
 ] }
+near-gas = { path = "../near-gas-rs" }
 near-actix-test-utils = { path = "test-utils/actix-test-utils" }
 near-amend-genesis = { path = "tools/amend-genesis" }
 near-database-tool = { path = "tools/database" }
