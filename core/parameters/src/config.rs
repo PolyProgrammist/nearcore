@@ -224,16 +224,17 @@ impl CongestionControlConfig {
     /// where we still want to process all transactions.
     pub fn test_disabled() -> Self {
         let max_value = u64::MAX;
+        let u128_max = u128::MAX;
         Self {
-            max_congestion_incoming_gas: max_value,
-            max_congestion_outgoing_gas: max_value,
+            max_congestion_incoming_gas: u128_max,
+            max_congestion_outgoing_gas: u128_max,
             max_congestion_memory_consumption: max_value,
             max_congestion_missed_chunks: max_value,
-            max_outgoing_gas: max_value,
-            min_outgoing_gas: max_value,
-            allowed_shard_outgoing_gas: max_value,
-            max_tx_gas: max_value,
-            min_tx_gas: max_value,
+            max_outgoing_gas: u128_max,
+            min_outgoing_gas: u128_max,
+            allowed_shard_outgoing_gas: u128_max,
+            max_tx_gas: u128_max,
+            min_tx_gas: u128_max,
             reject_tx_congestion_threshold: 2.0,
             outgoing_receipts_usual_size_limit: max_value,
             outgoing_receipts_big_size_limit: max_value,

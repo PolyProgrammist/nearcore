@@ -27,7 +27,7 @@ pub type EpochHeight = u64;
 /// Balance is type for storing amounts of tokens.
 pub type Balance = u128;
 /// Gas is a type for storing amount of gas.
-pub type Gas = near_gas::NearGas;
+pub type Gas = u128;
 /// Compute is a type for storing compute time. Measured in femtoseconds (10^-15 seconds).
 pub type Compute = u64;
 
