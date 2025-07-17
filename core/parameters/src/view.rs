@@ -684,7 +684,7 @@ impl From<ExtCostsConfigView> for crate::ExtCostsConfig {
                 ExtCosts::bls12381_p2_decompress_base => view.bls12381_p2_decompress_base,
                 ExtCosts::bls12381_p2_decompress_element => view.bls12381_p2_decompress_element,
         }
-        .map(|_, value| ParameterCost { gas: value, compute: value });
+        .map(|_, value| ParameterCost { gas: value, compute: u64::try_from(value).unwrap() });
         Self { costs }
     }
 }

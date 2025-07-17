@@ -89,7 +89,7 @@ impl CongestionControl {
                 0
             }
         } else {
-            mix(self.config.max_outgoing_gas, self.config.min_outgoing_gas, congestion)
+            mix(u64::try_from(self.config.max_outgoing_gas).unwrap(), u64::try_from(self.config.min_outgoing_gas).unwrap(), congestion).into()
         }
     }
 
@@ -104,10 +104,10 @@ impl CongestionControl {
     pub fn outgoing_size_limit(&self, sender_shard: ShardId) -> Gas {
         if sender_shard == ShardId::from(self.info.allowed_shard()) {
             // The allowed shard is allowed to send more data to us.
-            self.config.outgoing_receipts_big_size_limit
+            self.config.outgoing_receipts_big_size_limit.into()
         } else {
             // Other shards have a low standard limit.
-            self.config.outgoing_receipts_usual_size_limit
+            self.config.outgoing_receipts_usual_size_limit.into()
         }
     }
 

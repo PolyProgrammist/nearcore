@@ -203,7 +203,7 @@ impl Config {
         };
         self.grow_mem_cost = 0;
         self.regular_op_cost = 0;
-        self.limit_config.max_gas_burnt = u64::MAX;
+        self.limit_config.max_gas_burnt = u128::MAX;
     }
 
     pub fn enable_all_features(&mut self) {

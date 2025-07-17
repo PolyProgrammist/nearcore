@@ -121,10 +121,10 @@ impl TryFrom<&ParameterValue> for ParameterCost {
     fn try_from(value: &ParameterValue) -> Result<Self, Self::Error> {
         match value {
             ParameterValue::ParameterCost { gas, compute } => {
-                Ok(ParameterCost { gas: *gas, compute: *compute })
+                Ok(ParameterCost { gas: (*gas).into(), compute: *compute })
             }
             // If not specified, compute costs default to gas costs.
-            &ParameterValue::U64(v) => Ok(ParameterCost { gas: v, compute: v }),
+            &ParameterValue::U64(v) => Ok(ParameterCost { gas: v.into(), compute: v }),
             _ => Err(ValueConversionError::ParseType(
                 std::any::type_name::<ParameterCost>(),
                 value.clone(),
@@ -139,7 +139,7 @@ impl TryFrom<&ParameterValue> for Fee {
     fn try_from(value: &ParameterValue) -> Result<Self, Self::Error> {
         match value {
             &ParameterValue::Fee { send_sir, send_not_sir, execution } => {
-                Ok(Fee { send_sir, send_not_sir, execution })
+                Ok(Fee { send_sir: send_sir.into(), send_not_sir: send_not_sir.into(), execution: execution.into() })
             }
             _ => Err(ValueConversionError::ParseType(std::any::type_name::<Fee>(), value.clone())),
         }

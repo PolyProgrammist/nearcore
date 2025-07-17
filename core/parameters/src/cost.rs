@@ -155,7 +155,7 @@ impl ExtCostsConfig {
             ExtCosts::yield_resume_base => 300_000_000_000_000,
             ExtCosts::yield_resume_byte => 300_000_000_000_000,
         }
-        .map(|_, value| ParameterCost { gas: value, compute: value * factor });
+        .map(|_, value| ParameterCost { gas: value.into(), compute: value * factor });
         ExtCostsConfig { costs }
     }
 
