@@ -48,21 +48,21 @@ impl ProfileDataV2 {
     /// This is used to display old gas profiles on the RPC API and in debug output.
     pub fn legacy_action_costs(&self) -> Vec<(&'static str, Gas)> {
         vec![
-            ("CREATE_ACCOUNT", self.data[0]),
-            ("DELETE_ACCOUNT", self.data[1]),
-            ("DEPLOY_CONTRACT", self.data[2]), // contains per byte and base cost
-            ("FUNCTION_CALL", self.data[3]),   // contains per byte and base cost
-            ("TRANSFER", self.data[4]),
-            ("STAKE", self.data[5]),
-            ("ADD_KEY", self.data[6]), // contains base + per byte cost for function call keys and full access keys
-            ("DELETE_KEY", self.data[7]),
-            ("NEW_DATA_RECEIPT_BYTE", self.data[8]), // contains the per-byte cost for sending back a data dependency
-            ("NEW_RECEIPT", self.data[9]), // contains base cost for data receipts and action receipts
+            ("CREATE_ACCOUNT", self.data[0].into()),
+            ("DELETE_ACCOUNT", self.data[1].into()),
+            ("DEPLOY_CONTRACT", self.data[2].into()), // contains per byte and base cost
+            ("FUNCTION_CALL", self.data[3].into()),   // contains per byte and base cost
+            ("TRANSFER", self.data[4].into()),
+            ("STAKE", self.data[5].into()),
+            ("ADD_KEY", self.data[6].into()), // contains base + per byte cost for function call keys and full access keys
+            ("DELETE_KEY", self.data[7].into()),
+            ("NEW_DATA_RECEIPT_BYTE", self.data[8].into()), // contains the per-byte cost for sending back a data dependency
+            ("NEW_RECEIPT", self.data[9].into()), // contains base cost for data receipts and action receipts
         ]
     }
 
     pub fn action_gas(&self) -> u64 {
-        self.legacy_action_costs().iter().map(|(_name, cost)| *cost).fold(0, u64::saturating_add)
+        self.legacy_action_costs().iter().map(|(_name, cost)| u64::try_from(*cost).unwrap()).fold(0, u64::saturating_add)
     }
 
     /// Test instance with unique numbers in each field.
@@ -70,10 +70,10 @@ impl ProfileDataV2 {
         let mut profile_data = ProfileDataV2::default();
         let num_legacy_actions = 10;
         for i in 0..num_legacy_actions {
-            profile_data.data.0[i] = i as Gas + 1000;
+            profile_data.data.0[i] = (i as Gas + 1000).try_into().unwrap();
         }
         for i in num_legacy_actions..DataArray::LEN {
-            profile_data.data.0[i] = (i - num_legacy_actions) as Gas;
+            profile_data.data.0[i] = ((i - num_legacy_actions) as Gas).try_into().unwrap();
         }
         profile_data
     }

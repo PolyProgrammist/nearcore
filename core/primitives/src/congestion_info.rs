@@ -114,7 +114,7 @@ impl CongestionControl {
     /// How much gas we accept for executing new transactions going to any
     /// uncongested shards.
     pub fn process_tx_limit(&self) -> Gas {
-        mix(self.config.max_tx_gas, self.config.min_tx_gas, self.incoming_congestion())
+        mix(self.config.max_tx_gas.try_into().unwrap(), self.config.min_tx_gas.try_into().unwrap(), self.incoming_congestion()).into()
     }
 
     /// Whether we can accept new transaction with the receiver set to this shard.
@@ -324,11 +324,11 @@ impl CongestionInfo {
     }
 
     pub fn incoming_congestion(&self, config: &CongestionControlConfig) -> f64 {
-        clamped_f64_fraction(self.delayed_receipts_gas(), config.max_congestion_incoming_gas)
+        clamped_f64_fraction(self.delayed_receipts_gas(), config.max_congestion_incoming_gas.try_into().unwrap())
     }
 
     pub fn outgoing_congestion(&self, config: &CongestionControlConfig) -> f64 {
-        clamped_f64_fraction(self.buffered_receipts_gas(), config.max_congestion_outgoing_gas)
+        clamped_f64_fraction(self.buffered_receipts_gas(), config.max_congestion_outgoing_gas.try_into().unwrap())
     }
 
     pub fn memory_congestion(&self, config: &CongestionControlConfig) -> f64 {

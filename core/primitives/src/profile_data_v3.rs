@@ -120,14 +120,14 @@ impl ProfileDataV3 {
                 }
                 // If the `value` is non-zero, the gas cost also must be non-zero.
                 debug_assert!(key.gas(ext_costs_config) != 0);
-                ((*value as u128).saturating_mul(key.compute(ext_costs_config) as u128)
-                    / (key.gas(ext_costs_config) as u128)) as u64
+                (((*value as u128).saturating_mul(key.compute(ext_costs_config) as u128)
+                    / (key.gas(ext_costs_config) as u128)) as u64).into()
             })
-            .fold(0, Compute::saturating_add);
+            .fold(0, |arg0: u64, arg1: u128| Compute::saturating_add(arg0, 0 as u64/* u64 */));
 
         // We currently only support compute costs for host calls. In the future we might add
         // them for actions as well.
-        ext_compute_cost.saturating_add(self.action_gas()).saturating_add(self.get_wasm_cost())
+        ext_compute_cost.saturating_add(self.action_gas().try_into().unwrap()).saturating_add(self.get_wasm_cost().try_into().unwrap())
     }
 }
 
@@ -142,13 +142,13 @@ impl BorshDeserialize for ProfileDataV3 {
         // Extra values in the array that are unknown to the current binary will
         // be ignored. Missing values are filled with 0.
         let actions_profile = enum_map! {
-            cost => actions_array.get(borsh_action_index(cost)).copied().unwrap_or(0)
+            cost => u128::from(actions_array.get(borsh_action_index(cost)).copied().unwrap_or(0))
         };
         let wasm_ext_profile = enum_map! {
-            cost => ext_array.get(borsh_ext_index(cost)).copied().unwrap_or(0)
+            cost => u128::from(ext_array.get(borsh_ext_index(cost)).copied().unwrap_or(0))
         };
 
-        Ok(Self { actions_profile, wasm_ext_profile, wasm_gas })
+        Ok(Self { actions_profile, wasm_ext_profile, wasm_gas: wasm_gas.into() })
     }
 }
 
@@ -156,17 +156,17 @@ impl BorshSerialize for ProfileDataV3 {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         let mut actions_costs: Vec<u64> = vec![0u64; ActionCosts::LENGTH];
         for (cost, gas) in &self.actions_profile {
-            actions_costs[borsh_action_index(cost)] = *gas;
+            actions_costs[borsh_action_index(cost)] = (*gas).try_into().unwrap();
         }
         BorshSerialize::serialize(&actions_costs, writer)?;
 
         let mut ext_costs: Vec<u64> = vec![0u64; ExtCosts::LENGTH];
         for (cost, gas) in &self.wasm_ext_profile {
-            ext_costs[borsh_ext_index(cost)] = *gas;
+            ext_costs[borsh_ext_index(cost)] = (*gas).try_into().unwrap();
         }
         BorshSerialize::serialize(&ext_costs, writer)?;
 
-        let wasm_cost: u64 = self.wasm_gas;
+        let wasm_cost: u64 = self.wasm_gas.try_into().unwrap();
         BorshSerialize::serialize(&wasm_cost, writer)
     }
 }
