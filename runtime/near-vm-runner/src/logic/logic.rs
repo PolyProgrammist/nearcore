@@ -3062,7 +3062,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
     pub fn value_return(&mut self, value_len: u64, value_ptr: u64) -> Result<()> {
         self.result_state.gas_counter.pay_base(base)?;
         let return_val = get_memory_or_register!(self, value_ptr, value_len)?;
-        let mut burn_gas: Gas = 0;
+        let mut burn_gas = Gas::from_gas(0);
         let num_bytes = return_val.len() as u64;
         if num_bytes > self.config.limit_config.max_length_returned_data {
             return Err(HostError::ReturnedValueLengthExceeded {

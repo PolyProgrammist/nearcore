@@ -327,7 +327,7 @@ pub fn total_deposit(actions: &[Action]) -> Result<Balance, IntegerOverflowError
 
 /// Get the total sum of prepaid gas for given actions.
 pub fn total_prepaid_gas(actions: &[Action]) -> Result<Gas, IntegerOverflowError> {
-    let mut total_gas: Gas = 0;
+    let mut total_gas = Gas::from_gas(0);
     for action in actions {
         let action_gas;
         if let Action::Delegate(signed_delegate_action) = action {
@@ -364,7 +364,7 @@ fn pessimistic_gas_price(
         0
     } else {
         let maximum_depth =
-            if minimum_new_receipt_gas > 0 { prepaid_gas / minimum_new_receipt_gas } else { 0 };
+            if minimum_new_receipt_gas > 0 { prepaid_gas.as_gas() / minimum_new_receipt_gas } else { 0 };
         let inflation_exponent = u8::try_from(initial_receipt_hop + maximum_depth)
             .map_err(|_| IntegerOverflowError {})?;
         safe_gas_price_inflated(
