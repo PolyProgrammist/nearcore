@@ -284,13 +284,13 @@ impl<'a> VMLogic<'a> {
     // # Finite-wasm internals #
     // #########################
     pub fn finite_wasm_gas(&mut self, gas: u64) -> Result<()> {
-        self.gas(gas)
+        self.gas(Gas::from_gas(gas))
     }
 
     fn linear_gas(&mut self, count: u32, linear: u64, constant: u64) -> Result<u32> {
         let linear = u64::from(count).checked_mul(linear).ok_or(HostError::IntegerOverflow)?;
         let gas = constant.checked_add(linear).ok_or(HostError::IntegerOverflow)?;
-        self.gas(gas)?;
+        self.gas(Gas::from_gas(gas))?;
         Ok(count)
     }
 
@@ -354,7 +354,7 @@ impl<'a> VMLogic<'a> {
                 Some(s) => s,
                 None => return Err(VMLogicError::HostError(HostError::MemoryAccessViolation)),
             };
-        self.gas(((frame_size + 7) / 8) * u64::from(self.config.regular_op_cost))?;
+        self.gas(Gas::from_gas(((frame_size + 7) / 8) * u64::from(self.config.regular_op_cost)))?;
         Ok(())
     }
 
@@ -1765,11 +1765,11 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
     /// * If we exceed usage limit imposed on burnt gas returns `GasLimitExceeded`;
     /// * If we exceed the `prepaid_gas` then returns `GasExceeded`.
     pub fn gas(&mut self, gas: Gas) -> Result<()> {
-        self.result_state.gas_counter.burn_gas(Gas::from(gas))
+        self.result_state.gas_counter.burn_gas(gas)
     }
 
     pub fn gas_opcodes(&mut self, opcodes: u32) -> Result<()> {
-        self.gas(opcodes as u64 * self.config.regular_op_cost as u64)
+        self.gas(Gas::from_gas(opcodes as u64 * self.config.regular_op_cost as u64))
     }
 
     /// An alias for [`VMLogic::gas`].
@@ -1917,7 +1917,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
             arguments_len,
             arguments_ptr,
             amount_ptr,
-            gas,
+            Gas::from_gas(gas),
         )?;
         Ok(new_promise_idx)
     }
@@ -3642,10 +3642,10 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
     ) -> Result<()> {
         let per_byte_fee = self.fees_config.fee(action);
         let burn_gas =
-            num_bytes.checked_mul(per_byte_fee.send_fee(sir)).ok_or(HostError::IntegerOverflow)?;
+            per_byte_fee.send_fee(sir).checked_mul(num_bytes).ok_or(HostError::IntegerOverflow)?;
         let use_gas = burn_gas
             .checked_add(
-                num_bytes.checked_mul(per_byte_fee.exec_fee()).ok_or(HostError::IntegerOverflow)?,
+                per_byte_fee.exec_fee().checked_mul(num_bytes).ok_or(HostError::IntegerOverflow)?,
             )
             .ok_or(HostError::IntegerOverflow)?;
         self.result_state.gas_counter.pay_action_accumulated(burn_gas, use_gas, action)
@@ -3690,8 +3690,8 @@ impl VMOutcome {
             // Note: Fields below are added or merged when processing the
             // outcome. With 0 or the empty set, those are no-ops.
             return_data: ReturnData::None,
-            burnt_gas: 0,
-            used_gas: 0,
+            burnt_gas: Gas::from_gas(0),
+            used_gas: Gas::from_gas(0),
             compute_usage: 0,
             logs: Vec::new(),
             profile: ProfileDataV3::default(),
