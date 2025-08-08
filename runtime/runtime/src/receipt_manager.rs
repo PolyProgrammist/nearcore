@@ -528,8 +528,8 @@ impl ReceiptManager {
             promise_yield_receipt_index: _,
         } = self;
         let gas_weight_sum: u128 = gas_weights.iter().map(|(_, gv)| u128::from(gv.0)).sum();
-        if gas_weight_sum == 0 || unused_gas == 0 {
-            return Ok(0);
+        if gas_weight_sum == 0 || unused_gas == Gas::from_gas(0) {
+            return Ok(Gas::from_gas(0));
         }
         let mut distributed = 0u64;
         let mut gas_weight_iterator = gas_weights.iter().peekable();
@@ -544,21 +544,21 @@ impl ReceiptManager {
                     "Invalid function call index (promise_index={receipt_index}, action_index={action_index})",
                 );
             };
-            let to_assign = (unused_gas as u128 * weight.0 as u128 / gas_weight_sum) as u64;
+            let to_assign = (unused_gas.as_gas() as u128 * weight.0 as u128 / gas_weight_sum) as u64;
             action.gas = action.gas.checked_add(Gas::from_gas(to_assign)).unwrap();
             distributed = distributed
                 .checked_add(to_assign)
                 .unwrap_or_else(|| panic!("gas computation overflowed"));
             if gas_weight_iterator.peek().is_none() {
-                let remainder = unused_gas.wrapping_sub(distributed);
+                let remainder = unused_gas.as_gas().wrapping_sub(distributed);
                 distributed = distributed
                     .checked_add(remainder)
                     .unwrap_or_else(|| panic!("gas computation overflowed"));
                 action.gas = action.gas.checked_add(Gas::from_gas(remainder)).unwrap();
             }
         }
-        assert_eq!(unused_gas, distributed);
-        Ok(distributed)
+        assert_eq!(unused_gas.as_gas(), distributed);
+        Ok(Gas::from_gas(distributed))
     }
 }
 

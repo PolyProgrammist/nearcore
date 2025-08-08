@@ -283,7 +283,7 @@ impl ReceiptPreparationPipeline {
         let key = PrepareTaskKey { receipt_id: receipt.get_hash(), action_index };
         let Some(task) = self.map.get(&key) else {
             let start = Instant::now();
-            let gas_counter = self.gas_counter(view_config.as_ref(), function_call.gas.as_gas());
+            let gas_counter = self.gas_counter(view_config.as_ref(), function_call.gas);
             if !self.block_accounts.contains(account_id) {
                 tracing::debug!(
                     target: "runtime::pipelining",
@@ -320,7 +320,7 @@ impl ReceiptPreparationPipeline {
                         action_index
                     );
                     let gas_counter =
-                        self.gas_counter(view_config.as_ref(), function_call.gas.as_gas());
+                        self.gas_counter(view_config.as_ref(), function_call.gas);
                     let cache = self.contract_cache.as_ref().map(|c| c.handle());
                     let method_name = function_call.method_name.clone();
                     let contract = prepare_function_call(
