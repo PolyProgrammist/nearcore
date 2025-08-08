@@ -8,6 +8,7 @@ use crate::logic::gas_counter::FastGasCounter;
 use crate::logic::{
     Config, ExecutionResultState, External, GasCounter, VMContext, VMLogic, VMOutcome,
 };
+use near_primitives_core::types::Gas;
 use crate::near_vm_2_runner::{NearVmCompiler, NearVmEngine};
 use crate::runner::VMResult;
 use crate::{
