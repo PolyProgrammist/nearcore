@@ -111,7 +111,7 @@ pub struct ReceiptGroupV0 {
 impl ReceiptGroup {
     /// Create a new group which will contain one receipt with this size and gas.
     pub fn new(receipt_size: ByteSize, receipt_gas: Gas) -> ReceiptGroup {
-        ReceiptGroup::V0(ReceiptGroupV0 { size: receipt_size.as_u64(), gas: receipt_gas.into() })
+        ReceiptGroup::V0(ReceiptGroupV0 { size: receipt_size.as_u64(), gas: receipt_gas.as_gas() as u128 })
     }
 
     /// Total size of receipts in this group.
@@ -166,7 +166,7 @@ pub struct ReceiptGroupsConfig {
 impl ReceiptGroupsConfig {
     pub fn default_config() -> Self {
         // TODO(bandwidth_scheduler) - put in runtime config
-        ReceiptGroupsConfig { size_upper_bound: ByteSize::kb(100), gas_upper_bound: Gas::MAX }
+        ReceiptGroupsConfig { size_upper_bound: ByteSize::kb(100), gas_upper_bound: Gas::gas_limit() }
     }
 
     /// Decide whether a new receipt should be added to the last group
@@ -187,7 +187,7 @@ impl ReceiptGroupsConfig {
 
         let mut group_gas = last_group.gas();
         add_gas_checked(&mut group_gas, new_receipt_gas);
-        if group_gas > self.gas_upper_bound.into() {
+        if group_gas > self.gas_upper_bound.as_gas() as u128 {
             // The new group would have too much gas, start a new group.
             return true;
         }
@@ -407,13 +407,14 @@ fn subtract_size_checked(total: &mut u64, delta: ByteSize) {
 
 fn add_gas_checked(total: &mut u128, delta: Gas) {
     *total = total
-        .checked_add(delta.into())
+        .checked_add(delta.as_gas() as u128)
         .expect("add_gas_checked - Overflow! Total gas doesn't fit into u128!");
 }
 
 fn subtract_gas_checked(total: &mut u128, delta: Gas) {
-    *total =
-        total.checked_sub(delta.into()).expect("subtract_gas_checked - Underflow! Negative gas!")
+    *total = total
+        .checked_sub(delta.as_gas() as u128)
+        .expect("subtract_gas_checked - Underflow! Negative gas!")
 }
 
 #[cfg(test)]
