@@ -45,11 +45,15 @@ pub fn safe_gas_price_inflated(
 }
 
 pub fn safe_gas_to_balance(gas_price: Balance, gas: Gas) -> Result<Balance, IntegerOverflowError> {
-    gas_price.checked_mul(Balance::from(gas)).ok_or(IntegerOverflowError {})
+    gas_price.checked_mul(Balance::from(gas.as_gas())).ok_or(IntegerOverflowError {})
 }
 
 pub fn safe_add_gas(a: Gas, b: Gas) -> Result<Gas, IntegerOverflowError> {
     a.checked_add(b).ok_or(IntegerOverflowError {})
+}
+
+pub fn safe_mul_gas(a: Gas, b: u64) -> Result<Gas, IntegerOverflowError> {
+    a.checked_mul(b).ok_or(IntegerOverflowError {})
 }
 
 pub fn safe_add_balance(a: Balance, b: Balance) -> Result<Balance, IntegerOverflowError> {
@@ -138,27 +142,35 @@ pub fn total_send_fees(
                 let delegate_cost = fees.fee(ActionCosts::delegate).send_fee(sender_is_receiver);
                 let delegate_action = &signed_delegate_action.delegate_action;
 
-                delegate_cost
-                    + total_send_fees(
+                safe_add_gas(
+                    delegate_cost,
+                    total_send_fees(
                         config,
                         sender_is_receiver,
                         &delegate_action.get_actions(),
                         &delegate_action.receiver_id,
-                    )?
+                    )?,
+                )?
             }
             DeployGlobalContract(DeployGlobalContractAction { code, .. }) => {
                 let num_bytes = code.len() as u64;
-                fees.fee(ActionCosts::deploy_global_contract_base).send_fee(sender_is_receiver)
-                    + fees
-                        .fee(ActionCosts::deploy_global_contract_byte)
-                        .send_fee(sender_is_receiver)
-                        * num_bytes
+                safe_add_gas(
+                    fees.fee(ActionCosts::deploy_global_contract_base).send_fee(sender_is_receiver),
+                    safe_mul_gas(
+                        fees.fee(ActionCosts::deploy_global_contract_byte).send_fee(sender_is_receiver),
+                        num_bytes,
+                    )?,
+                )?
             }
             UseGlobalContract(action) => {
                 let num_bytes = action.contract_identifier.len() as u64;
-                fees.fee(ActionCosts::use_global_contract_base).send_fee(sender_is_receiver)
-                    + fees.fee(ActionCosts::use_global_contract_byte).send_fee(sender_is_receiver)
-                        * num_bytes
+                safe_add_gas(
+                    fees.fee(ActionCosts::use_global_contract_base).send_fee(sender_is_receiver),
+                    safe_mul_gas(
+                        fees.fee(ActionCosts::use_global_contract_byte).send_fee(sender_is_receiver),
+                        num_bytes,
+                    )?,
+                )?
             }
         };
         result = safe_add_gas(result, delta)?;
@@ -175,7 +187,7 @@ pub fn total_prepaid_send_fees(
     config: &RuntimeConfig,
     actions: &[Action],
 ) -> Result<Gas, IntegerOverflowError> {
-    let mut result = 0;
+    let mut result = Gas::from_gas(0);
     for action in actions {
         use Action::*;
         let delta = match action {
@@ -190,7 +202,7 @@ pub fn total_prepaid_send_fees(
                     &delegate_action.receiver_id,
                 )?
             }
-            _ => 0,
+            _ => Gas::from_gas(0),
         };
         result = safe_add_gas(result, delta)?;
     }
@@ -291,7 +303,7 @@ pub fn tx_cost(
     let receipt_gas_price = if ProtocolFeature::ReducedGasRefunds.enabled(protocol_version) {
         gas_price
     } else {
-        pessimistic_gas_price(gas_price, sender_is_receiver, fees, prepaid_gas)?
+        pessimistic_gas_price(gas_price, sender_is_receiver, fees, prepaid_gas.as_gas())?
     };
 
     let mut gas_remaining =
@@ -313,7 +325,7 @@ pub fn total_prepaid_exec_fees(
     actions: &[Action],
     receiver_id: &AccountId,
 ) -> Result<Gas, IntegerOverflowError> {
-    let mut result = 0;
+    let mut result = Gas::from_gas(0);
     let fees = &config.fees;
     for action in actions {
         let mut delta;
@@ -396,7 +408,7 @@ fn pessimistic_gas_price(
         0
     } else {
         let maximum_depth =
-            if minimum_new_receipt_gas > 0 { prepaid_gas.as_gas() / minimum_new_receipt_gas } else { 0 };
+            if minimum_new_receipt_gas > 0 { prepaid_gas / minimum_new_receipt_gas } else { 0 };
         let inflation_exponent = u8::try_from(initial_receipt_hop + maximum_depth)
             .map_err(|_| IntegerOverflowError {})?;
         safe_gas_price_inflated(
