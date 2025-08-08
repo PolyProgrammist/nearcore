@@ -80,7 +80,7 @@ pub(crate) fn execute_function_call(
         account_locked_balance: runtime_ext.account().locked(),
         storage_usage: runtime_ext.account().storage_usage(),
         attached_deposit: function_call.deposit,
-        prepaid_gas: function_call.gas.as_gas(),
+        prepaid_gas: function_call.gas,
         random_seed,
         view_config,
         output_data_receivers,
@@ -134,7 +134,7 @@ pub(crate) fn execute_function_call(
     };
 
     if !context.view_config.is_some() {
-        let unused_gas = function_call.gas.as_gas().saturating_sub(outcome.used_gas);
+        let unused_gas = function_call.gas.checked_sub(outcome.used_gas).unwrap_or(Gas::from_gas(0));
         let distributed = runtime_ext.receipt_manager.distribute_gas(unused_gas)?;
         outcome.used_gas = safe_add_gas(outcome.used_gas, distributed)?;
     }

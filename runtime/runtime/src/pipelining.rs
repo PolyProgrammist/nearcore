@@ -359,7 +359,7 @@ impl ReceiptPreparationPipeline {
     fn gas_counter(&self, view_config: Option<&ViewConfig>, gas: Gas) -> GasCounter {
         let max_gas_burnt = match view_config {
             Some(ViewConfig { max_gas_burnt }) => *max_gas_burnt,
-            None => self.config.wasm_config.limit_config.max_gas_burnt.as_gas(),
+            None => self.config.wasm_config.limit_config.max_gas_burnt,
         };
         GasCounter::new(
             self.config.wasm_config.ext_costs.clone(),
