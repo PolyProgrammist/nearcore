@@ -189,13 +189,15 @@ pub fn exec_fee(config: &RuntimeConfig, action: &Action, receiver_id: &AccountId
         DeployContract(DeployContractAction { code }) => {
             let num_bytes = code.len() as u64;
             fees.fee(ActionCosts::deploy_contract_base).exec_fee()
-                + fees.fee(ActionCosts::deploy_contract_byte).exec_fee() * num_bytes
+                .checked_add(fees.fee(ActionCosts::deploy_contract_byte).exec_fee().checked_mul(num_bytes).unwrap())
+                .unwrap()
         }
         FunctionCall(function_call_action) => {
             let num_bytes = function_call_action.method_name.as_bytes().len() as u64
                 + function_call_action.args.len() as u64;
             fees.fee(ActionCosts::function_call_base).exec_fee()
-                + fees.fee(ActionCosts::function_call_byte).exec_fee() * num_bytes
+                .checked_add(fees.fee(ActionCosts::function_call_byte).exec_fee().checked_mul(num_bytes).unwrap())
+                .unwrap()
         }
         Transfer(_) => {
             // Account for implicit account creation
@@ -216,7 +218,8 @@ pub fn exec_fee(config: &RuntimeConfig, action: &Action, receiver_id: &AccountId
                     .map(|name| name.as_bytes().len() as u64 + 1)
                     .sum::<u64>();
                 fees.fee(ActionCosts::add_function_call_key_base).exec_fee()
-                    + num_bytes * fees.fee(ActionCosts::add_function_call_key_byte).exec_fee()
+                    .checked_add(fees.fee(ActionCosts::add_function_call_key_byte).exec_fee().checked_mul(num_bytes).unwrap())
+                    .unwrap()
             }
             AccessKeyPermission::FullAccess => {
                 fees.fee(ActionCosts::add_full_access_key).exec_fee()

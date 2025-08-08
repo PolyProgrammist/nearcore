@@ -192,7 +192,7 @@ impl ReceiptPreparationPipeline {
                     };
                     let key = PrepareTaskKey { receipt_id: receipt.get_hash(), action_index };
                     let gas_counter =
-                        self.gas_counter(view_config.as_ref(), function_call.gas.as_gas());
+                        self.gas_counter(view_config.as_ref(), function_call.gas);
                     let entry = match self.map.entry(key) {
                         std::collections::btree_map::Entry::Vacant(v) => v,
                         // Already been submitted.
