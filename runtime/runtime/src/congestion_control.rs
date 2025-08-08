@@ -370,7 +370,7 @@ impl ReceiptSinkV2 {
                     self.own_congestion_info.remove_buffered_receipt_gas(gas as u128)?;
                     if should_update_outgoing_metadatas {
                         // Can't update metadatas immediately because state_update is borrowed by iterator.
-                        outgoing_metadatas_updates.push((ByteSize::b(size), gas));
+                        outgoing_metadatas_updates.push((ByteSize::b(size), Gas::from_gas(gas)));
                     }
                     // count how many to release later to avoid modifying
                     // `state_update` while iterating based on
@@ -447,7 +447,7 @@ impl ReceiptSinkV2 {
             // underflow impossible: checked forward_limit > gas/size_to_forward above
             forward_limit.gas = Gas::from_gas(forward_limit.gas.as_gas() - gas);
             forward_limit.size -= size;
-            stats.forwarded_receipts.entry(shard).or_default().add_receipt(size, gas);
+            stats.forwarded_receipts.entry(shard).or_default().add_receipt(size, Gas::from_gas(gas));
 
             Ok(ReceiptForwarding::Forwarded)
         } else {
@@ -478,19 +478,19 @@ impl ReceiptSinkV2 {
         };
 
         self.own_congestion_info.add_receipt_bytes(size)?;
-        self.own_congestion_info.add_buffered_receipt_gas(gas as u128)?;
+        self.own_congestion_info.add_buffered_receipt_gas(Gas::from_gas(gas))?;
 
         if receipt.should_update_outgoing_metadatas() {
             self.outgoing_metadatas.update_on_receipt_pushed(
                 shard,
                 ByteSize::b(size),
-                gas,
+                Gas::from_gas(gas),
                 state_update,
             )?;
         }
 
         self.outgoing_buffers.to_shard(shard).push_back(state_update, &receipt)?;
-        self.stats.buffered_receipts.entry(shard).or_default().add_receipt(size, gas);
+        self.stats.buffered_receipts.entry(shard).or_default().add_receipt(size, Gas::from_gas(gas));
         Ok(())
     }
 
@@ -910,8 +910,8 @@ impl<'a> DelayedReceiptQueueWrapper<'a> {
         self,
         congestion: &mut CongestionInfo,
     ) -> Result<(), RuntimeError> {
-        congestion.add_delayed_receipt_gas(self.new_delayed_gas as u128)?;
-        congestion.remove_delayed_receipt_gas(self.removed_delayed_gas as u128)?;
+        congestion.add_delayed_receipt_gas(Gas::from_gas(self.new_delayed_gas))?;
+        congestion.remove_delayed_receipt_gas(Gas::from_gas(self.removed_delayed_gas))?;
         congestion.add_receipt_bytes(self.new_delayed_bytes)?;
         congestion.remove_receipt_bytes(self.removed_delayed_bytes)?;
         Ok(())

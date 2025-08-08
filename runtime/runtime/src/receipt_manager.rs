@@ -341,7 +341,7 @@ impl ReceiptManager {
                 method_name: String::from_utf8(method_name)
                     .map_err(|_| HostError::InvalidMethodName)?,
                 args,
-                gas: Gas::from_gas(prepaid_gas),
+                gas: prepaid_gas,
                 deposit: attached_deposit,
             })),
         );
