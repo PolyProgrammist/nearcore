@@ -874,14 +874,14 @@ impl<'a> VMLogic<'a> {
     /// # Cost
     ///
     /// `base`
-    pub fn prepaid_gas(&mut self) -> Result<Gas> {
+    pub fn prepaid_gas(&mut self) -> Result<u64> {
         self.result_state.gas_counter.pay_base(base)?;
         if self.context.is_view() {
             return Err(
                 HostError::ProhibitedInView { method_name: "prepaid_gas".to_string() }.into()
             );
         }
-        Ok(self.context.prepaid_gas)
+        Ok(self.context.prepaid_gas.as_gas())
     }
 
     /// The gas that was already burnt during the contract execution (cannot exceed `prepaid_gas`)
@@ -893,12 +893,12 @@ impl<'a> VMLogic<'a> {
     /// # Cost
     ///
     /// `base`
-    pub fn used_gas(&mut self) -> Result<Gas> {
+    pub fn used_gas(&mut self) -> Result<u64> {
         self.result_state.gas_counter.pay_base(base)?;
         if self.context.is_view() {
             return Err(HostError::ProhibitedInView { method_name: "used_gas".to_string() }.into());
         }
-        Ok(self.result_state.gas_counter.used_gas())
+        Ok(self.result_state.gas_counter.used_gas().as_gas())
     }
 
     // ############
@@ -1862,7 +1862,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
         arguments_len: u64,
         arguments_ptr: u64,
         amount_ptr: u64,
-        gas: Gas,
+        gas: u64,
     ) -> Result<u64> {
         let new_promise_idx = self.promise_batch_create(account_id_len, account_id_ptr)?;
         self.promise_batch_action_function_call(
@@ -1917,7 +1917,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
             arguments_len,
             arguments_ptr,
             amount_ptr,
-            Gas::from_gas(gas),
+            gas,
         )?;
         Ok(new_promise_idx)
     }
@@ -2410,7 +2410,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
         arguments_len: u64,
         arguments_ptr: u64,
         amount_ptr: u64,
-        gas: Gas,
+        gas: u64,
     ) -> Result<()> {
         self.promise_batch_action_function_call_weight(
             promise_idx,
@@ -2468,7 +2468,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
         arguments_len: u64,
         arguments_ptr: u64,
         amount_ptr: u64,
-        gas: Gas,
+        gas: u64,
         gas_weight: u64,
     ) -> Result<()> {
         self.result_state.gas_counter.pay_base(base)?;
@@ -2479,6 +2479,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
             .into());
         }
         let amount = self.memory.get_u128(&mut self.result_state.gas_counter, amount_ptr)?;
+        let gas = Gas::from_gas(gas);
         let method_name = get_memory_or_register!(self, method_name_ptr, method_name_len)?;
         if method_name.is_empty() {
             return Err(HostError::EmptyMethodName.into());
@@ -2824,7 +2825,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
         method_name_ptr: u64,
         arguments_len: u64,
         arguments_ptr: u64,
-        gas: Gas,
+        gas: u64,
         gas_weight: u64,
         register_id: u64,
     ) -> Result<u64> {
@@ -2849,7 +2850,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
         let num_bytes = method_name.len() as u64 + arguments.len() as u64;
         self.result_state.gas_counter.pay_per(yield_create_byte, num_bytes)?;
         // Prepay gas for the callback so that it cannot be used for this execution any longer.
-        self.result_state.gas_counter.prepay_gas(gas)?;
+        self.result_state.gas_counter.prepay_gas(Gas::from_gas(gas))?;
 
         // Here we are creating a receipt with a single data dependency which will then be
         // resolved by the resume call.
@@ -2865,7 +2866,7 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
             method_name,
             arguments,
             0,
-            gas,
+            Gas::from_gas(gas),
             GasWeight(gas_weight),
         )?;
 
