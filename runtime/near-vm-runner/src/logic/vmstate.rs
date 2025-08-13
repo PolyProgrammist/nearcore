@@ -6,7 +6,6 @@ use super::gas_counter::GasCounter;
 use core::mem::size_of;
 use near_parameters::ExtCosts::*;
 use near_parameters::vm::LimitConfig;
-use near_primitives_core::types::Gas;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 
@@ -259,6 +258,7 @@ mod tests {
     use super::HostError;
     use super::Registers;
     use crate::logic::LimitConfig;
+    use near_primitives_core::types::Gas;
     use crate::logic::gas_counter::GasCounter;
     use crate::tests::test_vm_config;
     use near_parameters::ExtCostsConfig;
