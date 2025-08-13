@@ -25,7 +25,7 @@ pub(super) fn promise_create(
         args.len,
         args.ptr,
         amount.ptr,
-        gas,
+        gas.as_gas(),
     )
 }
 
@@ -46,7 +46,7 @@ pub(super) fn promise_batch_action_function_call(
         b"promise_batch_action",
         b"promise_batch_action_args",
         amount,
-        gas,
+        gas.as_gas(),
     )
 }
 
@@ -69,7 +69,7 @@ pub(super) fn promise_batch_action_function_call_ext(
         args.len,
         args.ptr,
         amount.ptr,
-        gas,
+        gas.as_gas(),
     )
 }
 
@@ -86,7 +86,7 @@ pub(super) fn promise_batch_action_function_call_weight(
         b"promise_batch_action",
         b"promise_batch_action_args",
         amount,
-        gas,
+        gas.as_gas(),
         weight,
     )
 }
@@ -111,7 +111,7 @@ pub(super) fn promise_batch_action_function_call_weight_ext(
         args.len,
         args.ptr,
         amount.ptr,
-        gas,
+        gas.as_gas(),
         weight,
     )
 }

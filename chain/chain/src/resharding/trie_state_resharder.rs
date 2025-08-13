@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_primitives::hash::CryptoHash;
-use near_primitives::types::{AccountId, BlockHeight};
+use near_primitives::types::{AccountId, BlockHeight, Gas};
 use near_store::adapter::trie_store::{TrieStoreUpdateAdapter, get_shard_uid_mapping};
 use near_store::adapter::{StoreAdapter, StoreUpdateAdapter};
 use near_store::db::TRIE_STATE_RESHARDING_STATUS_KEY;
@@ -683,7 +683,7 @@ mod tests {
                 CryptoHash::default(),
                 Vec::new(),
                 0,
-                0,
+                Gas::from_gas(0),
                 0,
                 Some(CongestionInfo::default()),
                 BandwidthRequests::empty(),

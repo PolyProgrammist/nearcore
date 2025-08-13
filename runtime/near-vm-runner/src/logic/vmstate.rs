@@ -6,6 +6,7 @@ use super::gas_counter::GasCounter;
 use core::mem::size_of;
 use near_parameters::ExtCosts::*;
 use near_parameters::vm::LimitConfig;
+use near_primitives_core::types::Gas;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 
@@ -272,7 +273,7 @@ mod tests {
         fn new() -> Self {
             let costs = ExtCostsConfig::test();
             Self {
-                gas: GasCounter::new(costs, u64::MAX, 0, u64::MAX, false),
+                gas: GasCounter::new(costs, Gas::from_gas(u64::MAX), 0, Gas::from_gas(u64::MAX), false),
                 cfg: test_vm_config(None).limit_config,
                 regs: Default::default(),
             }
@@ -305,7 +306,7 @@ mod tests {
 
         #[track_caller]
         fn assert_used_gas(&self, gas: u64) {
-            assert_eq!((gas, gas), (self.gas.burnt_gas(), self.gas.used_gas()));
+            assert_eq!((Gas::from_gas(gas), Gas::from_gas(gas)), (self.gas.burnt_gas(), self.gas.used_gas()));
         }
     }
 

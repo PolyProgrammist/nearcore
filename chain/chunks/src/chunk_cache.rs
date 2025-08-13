@@ -4,7 +4,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::sharding::{
     ChunkHash, PartialEncodedChunkPart, ReceiptProof, ShardChunkHeader,
 };
-use near_primitives::types::{BlockHeight, BlockHeightDelta, ShardId};
+use near_primitives::types::{BlockHeight, BlockHeightDelta, Gas, ShardId};
 use std::collections::hash_map::Entry::Occupied;
 use tracing::warn;
 
@@ -277,7 +277,7 @@ mod tests {
     use near_crypto::KeyType;
     use near_primitives::hash::CryptoHash;
     use near_primitives::sharding::{ShardChunkHeader, ShardChunkHeaderV2};
-    use near_primitives::types::ShardId;
+    use near_primitives::types::{Gas, ShardId};
     use near_primitives::validator_signer::InMemoryValidatorSigner;
 
     use crate::chunk_cache::EncodedChunksCache;
@@ -294,8 +294,8 @@ mod tests {
             1,
             height,
             shard_id,
-            0,
-            0,
+            Gas::from_gas(0),
+            Gas::from_gas(0),
             0,
             CryptoHash::default(),
             CryptoHash::default(),
