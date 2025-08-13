@@ -377,10 +377,10 @@ pub(crate) fn validate_actions(
 
     let total_prepaid_gas =
         total_prepaid_gas(actions).map_err(|_| ActionsValidationError::IntegerOverflow)?;
-    if total_prepaid_gas > Gas::from_gas(limit_config.max_total_prepaid_gas) {
+    if total_prepaid_gas > limit_config.max_total_prepaid_gas {
         return Err(ActionsValidationError::TotalPrepaidGasExceeded {
             total_prepaid_gas,
-            limit: Gas::from_gas(limit_config.max_total_prepaid_gas),
+            limit: limit_config.max_total_prepaid_gas,
         });
     }
 

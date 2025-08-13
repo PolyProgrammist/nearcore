@@ -143,7 +143,7 @@ fn function_call_no_weight_refund() {
 fn test_overflowing_burn_gas_with_promises_gas() {
     let gas_limit = 3 * 10u64.pow(14);
     let mut logic_builder = VMLogicBuilder::default();
-    logic_builder.config.limit_config.max_gas_burnt = Gas::from_gas(gas_limit);
+    logic_builder.config.limit_config.max_gas_burnt = gas_limit;
     logic_builder.context.prepaid_gas = gas_limit;
     let mut logic = logic_builder.build();
 

@@ -1773,8 +1773,8 @@ bls12381_p2_decompress_base + bls12381_p2_decompress_element * num_elements`
     }
 
     /// An alias for [`VMLogic::gas`].
-    pub fn burn_gas(&mut self, gas: Gas) -> Result<()> {
-        self.gas(gas)
+    pub fn burn_gas(&mut self, gas: u64) -> Result<()> {
+        self.gas(Gas::from_gas(gas))
     }
 
     /// This is the function that is exposed to WASM contracts under the name `gas`.

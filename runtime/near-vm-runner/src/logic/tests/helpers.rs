@@ -10,7 +10,7 @@ pub(super) fn promise_create(
     logic: &mut TestVMLogic<'_>,
     account_id: &[u8],
     amount: u128,
-    gas: Gas,
+    gas: u64,
 ) -> Result<u64> {
     let account_id = logic.internal_mem_write(account_id);
     let method = logic.internal_mem_write(b"promise_create");
@@ -97,7 +97,7 @@ pub(super) fn promise_batch_action_function_call_weight_ext(
     method_id: &[u8],
     args: &[u8],
     amount: u128,
-    gas: Gas,
+    gas: u64,
     weight: u64,
 ) -> Result<()> {
     let method_id = logic.internal_mem_write(method_id);
