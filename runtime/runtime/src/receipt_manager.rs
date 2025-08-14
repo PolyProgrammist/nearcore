@@ -577,7 +577,7 @@ mod tests {
             let index = receipt_manager
                 .create_action_receipt(vec![], vec![], "rick.test".parse().unwrap())
                 .unwrap();
-            gas_limit = gas_limit.saturating_sub(static_gas);
+            gas_limit = Gas::from_gas(gas_limit.as_gas().saturating_sub(static_gas.as_gas()));
             receipt_manager
                 .append_action_function_call_weight(
                     index,
@@ -590,7 +590,7 @@ mod tests {
                 .unwrap();
         }
         let accessor: fn(&(Gas, u64, Gas)) -> Gas = if after_distribute {
-            receipt_manager.distribute_gas(gas_limit.as_gas()).unwrap();
+            receipt_manager.distribute_gas(gas_limit).unwrap();
             |(_, _, expected)| *expected
         } else {
             |(static_gas, _, _)| *static_gas

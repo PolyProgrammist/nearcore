@@ -182,7 +182,7 @@ fn setup_runtime_for_shard(
 #[test]
 fn test_apply_no_op() {
     let (runtime, tries, root, apply_state, _, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), 0, 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), 0, Gas::from_gas(10u64.pow(15)));
     runtime
         .apply(
             tries.get_trie_for_shard(ShardUId::single_shard(), root),
@@ -202,7 +202,7 @@ fn test_apply_check_balance_validation_rewards() {
     let reward = to_yocto(10_000_000);
     let small_refund = to_yocto(500);
     let (runtime, tries, root, apply_state, _, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, Gas::from_gas(10u64.pow(15)));
 
     let validator_accounts_update = ValidatorAccountsUpdate {
         stake_info: vec![(alice_account(), initial_locked)].into_iter().collect(),
@@ -235,7 +235,7 @@ fn test_apply_refund_receipts() {
     let small_transfer = to_yocto(10_000);
     let gas_limit = 1;
     let (runtime, tries, mut root, mut apply_state, _, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], initial_balance, initial_locked, gas_limit);
+        setup_runtime(vec![alice_account()], initial_balance, initial_locked, Gas::from_gas(gas_limit));
 
     let n = 10;
     let receipts = generate_refund_receipts(small_transfer, n);
@@ -278,7 +278,7 @@ fn test_apply_delayed_receipts_feed_all_at_once() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
 
     let n = 10;
@@ -319,11 +319,13 @@ fn test_apply_delayed_receipts_add_more_using_chunks() {
     let initial_locked = to_yocto(500_000);
     let small_transfer = to_yocto(10_000);
     let (runtime, tries, mut root, mut apply_state, _, epoch_info_provider) =
-        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, 1);
+        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, Gas::from_gas(1));
 
-    let receipt_gas_cost = apply_state.config.fees.fee(ActionCosts::new_action_receipt).exec_fee()
-        + apply_state.config.fees.fee(ActionCosts::transfer).exec_fee();
-    apply_state.gas_limit = Some(receipt_gas_cost * 3);
+    let receipt_gas_cost = Gas::from_gas(
+        apply_state.config.fees.fee(ActionCosts::new_action_receipt).exec_fee().as_gas()
+        + apply_state.config.fees.fee(ActionCosts::transfer).exec_fee().as_gas()
+    );
+    apply_state.gas_limit = Some(Gas::from_gas(receipt_gas_cost.as_gas() * 3));
 
     let n = 40;
     let receipts = generate_receipts(small_transfer, n);
@@ -363,10 +365,12 @@ fn test_apply_delayed_receipts_adjustable_gas_limit() {
     let initial_locked = to_yocto(500_000);
     let small_transfer = to_yocto(10_000);
     let (runtime, tries, mut root, mut apply_state, _, epoch_info_provider) =
-        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, 1);
+        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, Gas::from_gas(1));
 
-    let receipt_gas_cost = apply_state.config.fees.fee(ActionCosts::new_action_receipt).exec_fee()
-        + apply_state.config.fees.fee(ActionCosts::transfer).exec_fee();
+    let receipt_gas_cost = Gas::from_gas(
+        apply_state.config.fees.fee(ActionCosts::new_action_receipt).exec_fee().as_gas()
+        + apply_state.config.fees.fee(ActionCosts::transfer).exec_fee().as_gas()
+    );
 
     let n = 120;
     let receipts = generate_receipts(small_transfer, n);
@@ -515,7 +519,7 @@ fn test_apply_delayed_receipts_local_tx() {
     let initial_locked = to_yocto(500_000);
     let small_transfer = to_yocto(10_000);
     let (runtime, tries, mut root, mut apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, 1);
+        setup_runtime(vec![alice_account(), bob_account()], initial_balance, initial_locked, Gas::from_gas(1));
 
     let receipt_exec_gas_fee = 1000;
     let mut free_config = RuntimeConfig::free();
@@ -1045,7 +1049,7 @@ fn test_apply_surplus_gas_for_function_call() {
 fn test_delete_key_add_key() {
     let initial_locked = to_yocto(500_000);
     let (runtime, tries, root, apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, Gas::from_gas(10u64.pow(15)));
 
     let state_update = tries.new_trie_update(ShardUId::single_shard(), root);
     let initial_account_state = get_account(&state_update, &alice_account()).unwrap().unwrap();
@@ -1086,7 +1090,7 @@ fn test_delete_key_add_key() {
 fn test_delete_key_underflow() {
     let initial_locked = to_yocto(500_000);
     let (runtime, tries, root, apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), initial_locked, Gas::from_gas(10u64.pow(15)));
 
     let mut state_update = tries.new_trie_update(ShardUId::single_shard(), root);
     let mut initial_account_state = get_account(&state_update, &alice_account()).unwrap().unwrap();
@@ -1260,7 +1264,7 @@ fn test_compute_usage_limit() {
 #[test]
 fn test_compute_usage_limit_with_failed_receipt() {
     let (runtime, tries, root, apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     let deploy_contract_receipt = create_receipt_with_actions(
         alice_account(),
@@ -2338,7 +2342,7 @@ fn test_contract_accesses_when_validating_chunk() {
 #[test]
 fn test_exclude_existing_contract_code_for_deploy_action() {
     let (runtime, tries, root, mut apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     apply_state.config = Arc::new(RuntimeConfig::free());
 
@@ -2432,7 +2436,7 @@ fn test_exclude_existing_contract_code_for_deploy_action() {
 #[test]
 fn test_exclude_existing_contract_code_for_delete_account_action() {
     let (runtime, tries, root, mut apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     apply_state.config = Arc::new(RuntimeConfig::free());
 
@@ -2854,7 +2858,7 @@ fn test_congestion_info_bootstrapping() {
 #[test]
 fn test_deploy_and_call_local_receipt() {
     let (runtime, tries, root, apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     let tx = SignedTransaction::from_actions(
         1,
@@ -2916,7 +2920,7 @@ fn test_deploy_and_call_local_receipt() {
 #[test]
 fn test_deploy_and_call_local_receipts() {
     let (runtime, tries, root, apply_state, signers, epoch_info_provider) =
-        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), 10u64.pow(15));
+        setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     let tx1 = SignedTransaction::from_actions(
         1,
