@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_primitives::hash::CryptoHash;
-use near_primitives::types::{AccountId, BlockHeight, Gas};
+use near_primitives::types::{AccountId, BlockHeight};
 use near_store::adapter::trie_store::{TrieStoreUpdateAdapter, get_shard_uid_mapping};
 use near_store::adapter::{StoreAdapter, StoreUpdateAdapter};
 use near_store::db::TRIE_STATE_RESHARDING_STATUS_KEY;
@@ -518,6 +518,7 @@ mod tests {
     use near_epoch_manager::EpochManager;
     use near_primitives::shard_layout::{ShardLayout, get_block_shard_uid};
     use near_primitives::trie_key::TrieKey;
+    use near_primitives::types::Gas;
     use near_store::Trie;
     use near_store::test_utils::{
         TestTriesBuilder, create_test_store, simplify_changes, test_populate_trie,

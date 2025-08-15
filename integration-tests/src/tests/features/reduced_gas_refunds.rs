@@ -14,7 +14,7 @@ const TGAS: Gas = Gas::from_gas(10u64.pow(12));
 
 #[test]
 fn test_burn_all_gas() {
-    let attached_gas = TGAS.saturating_mul(100);
+    let attached_gas = TGAS.checked_mul(100).unwrap();
     let burn_gas = attached_gas.checked_add(Gas::from_gas(1)).unwrap();
     let deposit = 0;
 
@@ -29,7 +29,7 @@ fn test_burn_all_gas() {
 
 #[test]
 fn test_deposit_refund() {
-    let attached_gas = TGAS.saturating_mul(100);
+    let attached_gas = TGAS.checked_mul(100).unwrap();
     let burn_gas = attached_gas.checked_add(Gas::from_gas(1)).unwrap();
     let deposit = 10;
 
@@ -44,8 +44,8 @@ fn test_deposit_refund() {
 
 #[test]
 fn test_big_gas_refund() {
-    let attached_gas = TGAS.saturating_mul(100);
-    let burn_gas = TGAS.saturating_mul(10);
+    let attached_gas = TGAS.checked_mul(100).unwrap();
+    let burn_gas = TGAS.checked_mul(10).unwrap();
     let deposit = 0;
 
     let refunds = generated_refunds_after_fn_call(attached_gas, burn_gas, deposit);
@@ -55,7 +55,7 @@ fn test_big_gas_refund() {
 
 #[test]
 fn test_small_gas_refund() {
-    let attached_gas = TGAS.saturating_mul(10);
+    let attached_gas = TGAS.checked_mul(10).unwrap();
     let burn_gas = attached_gas.checked_sub(TGAS.checked_div(2).unwrap()).unwrap();
     let deposit = 0;
 
@@ -137,7 +137,7 @@ fn generated_refunds_after_fn_call(
     if ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION) {
         let unspent_gas = attached_gas.checked_sub(actual_fn_call_gas_burnt).unwrap_or(Gas::from_gas(0));
         let max_gas_penalty = unspent_gas.max(
-            unspent_gas.saturating_mul(*fee_helper.cfg().gas_refund_penalty.numer() as u64)
+            unspent_gas.checked_mul(*fee_helper.cfg().gas_refund_penalty.numer() as u64).unwrap()
                 .checked_div(*fee_helper.cfg().gas_refund_penalty.denom() as u64).unwrap(),
         );
         let min_gas_penalty = unspent_gas.min(fee_helper.cfg().min_gas_refund_penalty);

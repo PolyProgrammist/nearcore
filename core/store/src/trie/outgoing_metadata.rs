@@ -516,13 +516,13 @@ mod tests {
         queue.update_on_receipt_popped(fifty_kb, Gas::from_gas(10), trie_update).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![100_000, 10_000, 200_000]);
 
-        queue.update_on_receipt_popped(hundred_kb, 10, trie_update).unwrap();
+        queue.update_on_receipt_popped(hundred_kb, Gas::from_gas(10), trie_update).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![10_000, 200_000]);
 
         queue.update_on_receipt_popped(ten_kb, Gas::from_gas(10), trie_update).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![200_000]);
 
-        queue.update_on_receipt_popped(two_hundred_kb, 10, trie_update).unwrap();
+        queue.update_on_receipt_popped(two_hundred_kb, Gas::from_gas(10), trie_update).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), Vec::<u64>::new());
     }
 

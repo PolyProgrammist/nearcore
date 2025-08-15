@@ -14,7 +14,7 @@ use near_primitives::errors::StorageError;
 use near_primitives::hash::CryptoHash;
 use near_primitives::shard_layout::{ShardUId, get_block_shard_uid};
 use near_primitives::types::chunk_extra::ChunkExtra;
-use near_primitives::types::{BlockHeight, Gas, StateRoot};
+use near_primitives::types::{BlockHeight, StateRoot};
 use std::collections::BTreeSet;
 use std::time::Instant;
 use tracing::{debug, info, warn};

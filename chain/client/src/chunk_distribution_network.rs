@@ -11,7 +11,7 @@ use near_chunks::adapter::ShardsManagerRequestFromClient;
 use near_primitives::{
     hash::CryptoHash,
     sharding::{PartialEncodedChunk, ShardChunkHeader},
-    types::{EpochId, Gas, ShardId},
+    types::{EpochId, ShardId},
 };
 use std::fmt;
 use tracing::{debug, error};

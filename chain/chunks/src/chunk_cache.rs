@@ -4,7 +4,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::sharding::{
     ChunkHash, PartialEncodedChunkPart, ReceiptProof, ShardChunkHeader,
 };
-use near_primitives::types::{BlockHeight, BlockHeightDelta, Gas, ShardId};
+use near_primitives::types::{BlockHeight, BlockHeightDelta, ShardId};
 use std::collections::hash_map::Entry::Occupied;
 use tracing::warn;
 
