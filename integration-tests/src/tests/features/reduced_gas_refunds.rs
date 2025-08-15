@@ -10,7 +10,7 @@ use std::sync::Arc;
 use testlib::fees_utils::FeeHelper;
 use testlib::runtime_utils::{add_test_contract, alice_account, bob_account};
 
-const TGAS: Gas = 10u64.pow(12);
+const TGAS: Gas = Gas::from_gas(10u64.pow(12));
 
 #[test]
 fn test_burn_all_gas() {

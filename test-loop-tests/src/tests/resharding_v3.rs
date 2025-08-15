@@ -9,7 +9,7 @@ use near_primitives::action::{GlobalContractDeployMode, GlobalContractIdentifier
 use near_primitives::epoch_manager::EpochConfigStore;
 use near_primitives::hash::CryptoHash;
 use near_primitives::shard_layout::{ShardLayout, shard_uids_to_ids};
-use near_primitives::types::{AccountId, BlockHeightDelta, ShardId, ShardIndex};
+use near_primitives::types::{AccountId, BlockHeightDelta, Gas, ShardId, ShardIndex};
 use near_primitives::version::PROTOCOL_VERSION;
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
@@ -472,8 +472,8 @@ fn test_resharding_v3_base(params: TestReshardingParameters) {
     if params.limit_outgoing_gas || params.short_yield_timeout {
         let mut runtime_config = RuntimeConfig::test();
         if params.limit_outgoing_gas {
-            runtime_config.congestion_control_config.max_outgoing_gas = 100 * TGAS;
-            runtime_config.congestion_control_config.min_outgoing_gas = 100 * TGAS;
+            runtime_config.congestion_control_config.max_outgoing_gas = Gas::from_gas(100 * TGAS);
+            runtime_config.congestion_control_config.min_outgoing_gas = Gas::from_gas(100 * TGAS);
         }
         if params.short_yield_timeout {
             let mut wasm_config = vm::Config::clone(&runtime_config.wasm_config);

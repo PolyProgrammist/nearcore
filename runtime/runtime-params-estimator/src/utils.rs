@@ -455,7 +455,7 @@ mod test {
         let costs =
             gas_values.iter().map(|n| GasCost::from_gas((*n).into(), GasMetric::Time)).collect();
 
-        let results = percentiles(costs, p_values).map(|cost| cost.to_gas()).collect::<Vec<_>>();
+        let results = percentiles(costs, p_values).map(|cost| cost.to_gas().as_gas()).collect::<Vec<_>>();
 
         assert_eq!(results, expected_gas_results,)
     }
