@@ -2411,7 +2411,7 @@ fn test_execution_metadata() {
     // Total costs for creating a function call receipt.
     let expected_receipt_cost = Gas::from_gas(config.fees.fee(ActionCosts::new_action_receipt).execution.as_gas())
         .checked_add(config.fees.fee(ActionCosts::function_call_base).exec_fee()).unwrap()
-        .checked_add(config.fees.fee(ActionCosts::function_call_byte).exec_fee().saturating_mul("main".len() as u64)).unwrap()
+        .checked_add(config.fees.fee(ActionCosts::function_call_byte).exec_fee().checked_mul("main".len() as u64).unwrap()).unwrap()
         .as_gas();
 
     // We spend two wasm instructions (call & drop), plus 8 ops for initializing function
@@ -2449,14 +2449,15 @@ fn test_execution_metadata() {
     let actual_profile = serde_json::to_value(&metadata.gas_profile).unwrap();
     assert_eq!(expected_profile, actual_profile);
 
-    let actual_receipt_cost = outcome.gas_burnt.as_gas()
-        - metadata
+    let actual_receipt_cost = outcome.gas_burnt.checked_sub(
+        metadata
             .gas_profile
             .clone()
             .unwrap_or_default()
             .into_iter()
             .map(|it| it.gas_used)
-            .sum::<u64>();
+            .fold(Gas::from_gas(0), |acc, gas| acc.checked_add(gas).unwrap())
+    ).unwrap().as_gas();
 
     assert_eq!(expected_receipt_cost, actual_receipt_cost)
 }

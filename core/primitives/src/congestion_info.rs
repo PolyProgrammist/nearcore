@@ -652,8 +652,8 @@ mod tests {
         let mut info = CongestionInfo::default();
 
         info.add_delayed_receipt_gas(config.max_congestion_incoming_gas).unwrap();
-        info.add_delayed_receipt_gas(500).unwrap();
-        info.remove_delayed_receipt_gas(500).unwrap();
+        info.add_delayed_receipt_gas(Gas::from_gas(500)).unwrap();
+        info.remove_delayed_receipt_gas(Gas::from_gas(500)).unwrap();
 
         {
             let control = CongestionControl::new(config, info, 0);
@@ -682,7 +682,7 @@ mod tests {
         }
 
         // reduce congestion to 10%
-        info.remove_delayed_receipt_gas(config.max_congestion_incoming_gas.saturating_mul(7).checked_div(10).unwrap()).unwrap();
+        info.remove_delayed_receipt_gas(config.max_congestion_incoming_gas.checked_mul(7).unwrap().checked_div(10).unwrap()).unwrap();
         {
             let control = CongestionControl::new(config, info, 0);
             assert_eq!(0.1, control.congestion_level());
@@ -701,8 +701,8 @@ mod tests {
         let mut info = CongestionInfo::default();
 
         info.add_buffered_receipt_gas(config.max_congestion_outgoing_gas).unwrap();
-        info.add_buffered_receipt_gas(500).unwrap();
-        info.remove_buffered_receipt_gas(500).unwrap();
+        info.add_buffered_receipt_gas(Gas::from_gas(500)).unwrap();
+        info.remove_buffered_receipt_gas(Gas::from_gas(500)).unwrap();
 
         let control = CongestionControl::new(config, info, 0);
         assert_eq!(1.0, control.congestion_level());

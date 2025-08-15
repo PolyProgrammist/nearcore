@@ -696,7 +696,7 @@ pub fn test_create_account_again(node: impl Node) {
     let additional_cost = fee_helper.create_account_transfer_full_key_cost_fail_on_create_account();
     // Refund penalty also applies to refunds after failing.
     let gas_refund = fee_helper.cfg().fee(ActionCosts::transfer).exec_fee()
-        + fee_helper.cfg().fee(ActionCosts::add_full_access_key).exec_fee();
+        .checked_add(fee_helper.cfg().fee(ActionCosts::add_full_access_key).exec_fee()).unwrap();
     let refund_cost = fee_helper.gas_refund_cost(gas_refund);
 
     let result1 = node_user.view_account(account_id).unwrap();
@@ -746,7 +746,7 @@ pub fn test_create_account_failure_already_exists(node: impl Node) {
 
     // Refund penalty also applies to refunds after failing.
     let gas_refund = fee_helper.cfg().fee(ActionCosts::transfer).exec_fee()
-        + fee_helper.cfg().fee(ActionCosts::add_full_access_key).exec_fee();
+        .checked_add(fee_helper.cfg().fee(ActionCosts::add_full_access_key).exec_fee()).unwrap();
     let refund_cost = fee_helper.gas_refund_cost(gas_refund);
 
     let result1 = node_user.view_account(account_id).unwrap();
@@ -1081,16 +1081,17 @@ pub fn test_access_key_smart_contract(node: impl Node) {
     let exec_gas = fee_helper.function_call_exec_gas(method_name.as_bytes().len() as u64);
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), method_name, vec![], prepaid_gas, 0)
+        .function_call(account_id.clone(), bob_account(), method_name, vec![], Gas::from_gas(prepaid_gas), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
         FinalExecutionStatus::SuccessValue(10i32.to_le_bytes().to_vec())
     );
-    let gross_gas_refund =
-        prepaid_gas + exec_gas - transaction_result.receipts_outcome[0].outcome.gas_burnt.as_gas();
+    let gross_gas_refund = Gas::from_gas(prepaid_gas)
+        .checked_add(exec_gas).unwrap()
+        .checked_sub(transaction_result.receipts_outcome[0].outcome.gas_burnt).unwrap();
     let refund_penalty = fee_helper.cfg().gas_penalty_for_gas_refund(gross_gas_refund);
-    let gas_refund = fee_helper.gas_to_balance(gross_gas_refund - refund_penalty);
+    let gas_refund = fee_helper.gas_to_balance(gross_gas_refund.checked_sub(refund_penalty).unwrap());
 
     // Refund receipt may not be ready yet
     assert!([1, 2].contains(&transaction_result.receipts_outcome.len()));
