@@ -1352,7 +1352,7 @@ fn slow_test_resharding_v3_outgoing_receipts_towards_splitted_shard() {
         .add_loop_action(call_burn_gas_contract(
             vec![account_1_in_stable_shard, account_2_in_stable_shard],
             vec![receiver_account],
-            5 * TGAS,
+            Gas::from_gas(5 * TGAS),
             DEFAULT_EPOCH_LENGTH,
         ))
         .build();
@@ -1370,7 +1370,7 @@ fn slow_test_resharding_v3_outgoing_receipts_from_splitted_shard() {
         .add_loop_action(call_burn_gas_contract(
             vec![account_in_left_child, account_in_right_child],
             vec![receiver_account],
-            5 * TGAS,
+            Gas::from_gas(5 * TGAS),
             INCREASED_EPOCH_LENGTH,
         ))
         .epoch_length(INCREASED_EPOCH_LENGTH)

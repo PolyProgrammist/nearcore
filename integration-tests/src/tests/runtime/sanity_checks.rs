@@ -2,7 +2,7 @@ use crate::node::{Node, RuntimeNode};
 use near_chain_configs::Genesis;
 use near_parameters::{ExtCosts, RuntimeConfig, RuntimeConfigStore};
 use near_primitives::serialize::to_base64;
-use near_primitives::types::AccountId;
+use near_primitives::types::{AccountId, Gas};
 use near_primitives::version::{PROTOCOL_VERSION, ProtocolFeature};
 use near_primitives::views::{
     CostGasUsed, ExecutionOutcomeWithIdView, ExecutionStatusView, FinalExecutionStatus,
@@ -145,7 +145,7 @@ fn test_cost_sanity() {
                 .map(|cost| {
                     if is_nondeterministic_cost(&cost.cost) {
                         // Ignore `gas_used` of nondeterministic costs.
-                        CostGasUsed { gas_used: 0, ..cost }
+                        CostGasUsed { gas_used: Gas::from_gas(0), ..cost }
                     } else {
                         cost
                     }

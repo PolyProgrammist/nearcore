@@ -399,13 +399,13 @@ mod test {
         );
         profile_data.add_ext_cost(
             ExtCosts::storage_write_base,
-            5 * ExtCosts::storage_write_base.gas(&ext_costs_config),
+            ExtCosts::storage_write_base.gas(&ext_costs_config).saturating_mul(5),
         );
-        profile_data.add_action_cost(ActionCosts::function_call_base, 100);
+        profile_data.add_action_cost(ActionCosts::function_call_base, Gas::from_gas(100));
 
         assert_eq!(
             profile_data.total_compute_usage(&ext_costs_config),
-            3 * profile_data.host_gas() + profile_data.action_gas()
+            profile_data.host_gas().saturating_mul(3).checked_add(profile_data.action_gas()).unwrap()
         );
     }
 
@@ -414,10 +414,10 @@ mod test {
     fn test_borsh_ser_deser() {
         let mut profile_data = ProfileDataV3::default();
         for (i, cost) in ExtCosts::iter().enumerate() {
-            profile_data.add_ext_cost(cost, i as Gas);
+            profile_data.add_ext_cost(cost, Gas::from_gas(i as u64));
         }
         for (i, cost) in ActionCosts::iter().enumerate() {
-            profile_data.add_action_cost(cost, i as Gas + 1000);
+            profile_data.add_action_cost(cost, Gas::from_gas(i as u64 + 1000));
         }
         let buf = borsh::to_vec(&profile_data).expect("failed serializing a normal profile");
 
