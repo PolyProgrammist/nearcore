@@ -2718,7 +2718,7 @@ fn test_congestion_buffering() {
     // Check congestion is 1.0
     let congestion = apply_state.congestion_control(receiver_shard, 0);
     assert_eq!(congestion.congestion_level(), 1.0);
-    assert_eq!(congestion.outgoing_gas_limit(local_shard), 0);
+    assert_eq!(congestion.outgoing_gas_limit(local_shard), Gas::from_gas(0));
 
     // release congestion to just below 1.0, which should allow one receipt
     // to be forwarded per round
@@ -2860,7 +2860,7 @@ fn test_deploy_and_call_local_receipt() {
         setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     let tx = SignedTransaction::from_actions(
-        Gas::from_gas(1),
+        1,
         alice_account(),
         alice_account(),
         &*signers[0],
@@ -2922,7 +2922,7 @@ fn test_deploy_and_call_local_receipts() {
         setup_runtime(vec![alice_account()], to_yocto(1_000_000), to_yocto(500_000), Gas::from_gas(10u64.pow(15)));
 
     let tx1 = SignedTransaction::from_actions(
-        Gas::from_gas(1),
+        1,
         alice_account(),
         alice_account(),
         &*signers[0],
@@ -2998,7 +2998,7 @@ fn test_transaction_ordering_with_apply() {
 
     // This transaction should be dropped due to invalid signer.
     let alice_invalid_tx = SignedTransaction::send_money(
-        Gas::from_gas(1),
+        1,
         alice_account(),
         alice_account(),
         &alice_invalid_signer,
@@ -3006,7 +3006,7 @@ fn test_transaction_ordering_with_apply() {
         CryptoHash::default(),
     );
     let alice_tx1 = SignedTransaction::send_money(
-        Gas::from_gas(1),
+        1,
         alice_account(),
         alice_account(),
         &alice_signer,
@@ -3022,7 +3022,7 @@ fn test_transaction_ordering_with_apply() {
         CryptoHash::default(),
     );
     let bob_tx1 = SignedTransaction::send_money(
-        Gas::from_gas(1),
+        1,
         bob_account(),
         bob_account(),
         &bob_signer,
@@ -3174,11 +3174,11 @@ fn test_transaction_multiple_access_keys_with_apply() {
 fn test_expired_transaction() {
     let alice_signer = InMemorySigner::test_signer(&alice_account());
     let expired_tx = vec![SignedTransaction::send_money(
-        Gas::from_gas(1),
+        1,
         alice_account(),
         alice_account(),
         &alice_signer,
-        Gas::from_gas(1),
+        1,
         CryptoHash::default(),
     )];
     let (runtime, tries, root, apply_state, _signers, epoch_info_provider) = setup_runtime(

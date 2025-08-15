@@ -441,17 +441,17 @@ mod tests {
     #[test]
     fn test_receipt_groups_config() {
         let config =
-            ReceiptGroupsConfig { size_upper_bound: ByteSize::kb(100), gas_upper_bound: 100 };
+            ReceiptGroupsConfig { size_upper_bound: ByteSize::kb(100), gas_upper_bound: Gas::from_gas(100) };
 
-        let group = ReceiptGroup::new(ByteSize::kb(50), 50);
+        let group = ReceiptGroup::new(ByteSize::kb(50), Gas::from_gas(50));
 
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(10), 0), false);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(50), 0), false);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(100), 0), true);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 0), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(10), Gas::from_gas(0)), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(50), Gas::from_gas(0)), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(100), Gas::from_gas(0)), true);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(0)), false);
 
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 10), false);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 50), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(10)), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(50)), false);
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 100), true);
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 0), false);
 
