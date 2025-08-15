@@ -682,7 +682,7 @@ mod tests {
                 &parent_root,
                 CryptoHash::default(),
                 Vec::new(),
-                0,
+                Gas::from_gas(0),
                 Gas::from_gas(0),
                 0,
                 Some(CongestionInfo::default()),

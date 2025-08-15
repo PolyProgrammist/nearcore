@@ -1,6 +1,7 @@
 use actix::Addr;
 use near_chain_configs::Genesis;
 use near_client::ViewClientActor;
+use near_primitives::types::Gas;
 use validated_operations::ValidatedOperation;
 
 pub(crate) mod nep141;

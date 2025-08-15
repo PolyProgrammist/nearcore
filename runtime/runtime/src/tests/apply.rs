@@ -387,7 +387,7 @@ fn test_apply_delayed_receipts_adjustable_gas_limit() {
         } else if num_receipts_per_block > 1 {
             num_receipts_per_block -= 1;
         }
-        apply_state.gas_limit = Some(num_receipts_per_block * receipt_gas_cost);
+        apply_state.gas_limit = Some(Gas::from_gas(num_receipts_per_block * receipt_gas_cost.as_gas()));
         let prev_receipts: &[Receipt] = receipt_chunks.next().unwrap_or_default();
         num_receipts_given += prev_receipts.len() as u64;
         let apply_result = runtime
@@ -476,7 +476,7 @@ fn generate_delegate_actions(deposit: u128, n: u64) -> Vec<Receipt> {
             let inner_actions = [Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "foo".to_string(),
                 args: b"arg".to_vec(),
-                gas: Gas::from_gas(MAX_ATTACHED_GAS),
+                gas: MAX_ATTACHED_GAS,
                 deposit,
             }))];
 
@@ -528,7 +528,7 @@ fn test_apply_delayed_receipts_local_tx() {
         Gas::from_gas(receipt_exec_gas_fee);
     apply_state.config = Arc::new(free_config);
     // This allows us to execute 3 receipts per apply.
-    apply_state.gas_limit = Some(receipt_exec_gas_fee * 3);
+    apply_state.gas_limit = Some(Gas::from_gas(receipt_exec_gas_fee * 3));
 
     let num_receipts = 6;
     let receipts = generate_receipts(small_transfer, num_receipts);
@@ -734,7 +734,7 @@ fn test_apply_deficit_gas_for_transfer() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
 
     let n = 1;
@@ -769,7 +769,7 @@ fn test_apply_surplus_gas_for_transfer() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
     let gas_price = GAS_PRICE * 10;
 
@@ -791,13 +791,15 @@ fn test_apply_surplus_gas_for_transfer() {
         )
         .unwrap();
     let fees = &apply_state.config.fees;
-    let exec_gas = fees.fee(ActionCosts::new_action_receipt).exec_fee()
-        + fees.fee(ActionCosts::transfer).exec_fee();
+    let exec_gas = Gas::from_gas(
+        fees.fee(ActionCosts::new_action_receipt).exec_fee().as_gas()
+        + fees.fee(ActionCosts::transfer).exec_fee().as_gas()
+    );
 
     let expected_burnt_amount = if fees.refund_gas_price_changes {
-        Balance::from(exec_gas) * GAS_PRICE
+        Balance::from(exec_gas.as_gas()) * GAS_PRICE
     } else {
-        Balance::from(exec_gas) * gas_price
+        Balance::from(exec_gas.as_gas()) * gas_price
     };
     let expected_receipts = if fees.refund_gas_price_changes {
         // refund the surplus
@@ -821,7 +823,7 @@ fn test_apply_deficit_gas_for_function_call_covered() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
 
     let gas = 2 * 10u64.pow(14);
@@ -851,17 +853,17 @@ fn test_apply_deficit_gas_for_function_call_covered() {
             actions,
         }),
     })];
-    let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
+    let total_receipt_cost = Balance::from(gas + expected_gas_burnt.as_gas()) * gas_price;
     let expected_gas_burnt_amount = if apply_state.config.fees.refund_gas_price_changes {
-        Balance::from(expected_gas_burnt) * GAS_PRICE
+        Balance::from(expected_gas_burnt.as_gas()) * GAS_PRICE
     } else {
-        Balance::from(expected_gas_burnt) * gas_price
+        Balance::from(expected_gas_burnt.as_gas()) * gas_price
     };
     // With gas refund penalties enabled, we should see a reduced refund value
     let unspent_gas = (total_receipt_cost - expected_gas_burnt_amount) / gas_price;
-    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas as u64);
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(Gas::from_gas(unspent_gas as u64));
     let expected_refund =
-        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty) * gas_price;
+        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty.as_gas()) * gas_price;
 
     let result = runtime
         .apply(
@@ -880,7 +882,7 @@ fn test_apply_deficit_gas_for_function_call_covered() {
     } else {
         assert_eq!(
             result.stats.balance.gas_deficit_amount,
-            Balance::from(expected_gas_burnt) * (GAS_PRICE - gas_price)
+            Balance::from(expected_gas_burnt.as_gas()) * (GAS_PRICE - gas_price)
         );
     }
     // The refund is less than the received amount.
@@ -903,7 +905,7 @@ fn test_apply_deficit_gas_for_function_call_partial() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
 
     let gas = 1_000_000;
@@ -933,14 +935,14 @@ fn test_apply_deficit_gas_for_function_call_partial() {
             actions,
         }),
     })];
-    let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
+    let total_receipt_cost = Balance::from(gas + expected_gas_burnt.as_gas()) * gas_price;
     let expected_deficit = if apply_state.config.fees.refund_gas_price_changes {
         // Used full prepaid gas, but it still not enough to cover deficit.
         let expected_gas_burnt_amount = Balance::from(expected_gas_burnt) * GAS_PRICE;
         expected_gas_burnt_amount - total_receipt_cost
     } else {
         // The "deficit" is simply the value change due to gas price changes
-        Balance::from(expected_gas_burnt) * (GAS_PRICE - gas_price)
+        Balance::from(expected_gas_burnt.as_gas()) * (GAS_PRICE - gas_price)
     };
 
     let result = runtime
@@ -979,7 +981,7 @@ fn test_apply_surplus_gas_for_function_call() {
         vec![alice_account(), bob_account()],
         initial_balance,
         initial_locked,
-        gas_limit,
+        Gas::from_gas(gas_limit),
     );
 
     let gas = 2 * 10u64.pow(14);
@@ -1009,18 +1011,18 @@ fn test_apply_surplus_gas_for_function_call() {
             actions,
         }),
     })];
-    let total_receipt_cost = Balance::from(gas + expected_gas_burnt) * gas_price;
+    let total_receipt_cost = Balance::from(gas + expected_gas_burnt.as_gas()) * gas_price;
     let expected_gas_burnt_amount = if apply_state.config.fees.refund_gas_price_changes {
-        Balance::from(expected_gas_burnt) * GAS_PRICE
+        Balance::from(expected_gas_burnt.as_gas()) * GAS_PRICE
     } else {
-        Balance::from(expected_gas_burnt) * gas_price
+        Balance::from(expected_gas_burnt.as_gas()) * gas_price
     };
 
     // With gas refund penalties enabled, we should see a reduced refund value
     let unspent_gas = (total_receipt_cost - expected_gas_burnt_amount) / gas_price;
-    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas as u64);
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(Gas::from_gas(unspent_gas as u64));
     let expected_refund =
-        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty) * gas_price;
+        total_receipt_cost - expected_gas_burnt_amount - Balance::from(refund_penalty.as_gas()) * gas_price;
 
     let result = runtime
         .apply(
