@@ -317,7 +317,7 @@ pub(crate) fn call_burn_gas_contract(
                     let signer: Signer = create_user_test_signer(signer_id).into();
                     nonce.set(nonce.get() + 1);
                     let method_name = "burn_gas_raw".to_owned();
-                    let burn_gas: u64 = gas_burnt_per_call;
+                    let burn_gas: u64 = gas_burnt_per_call.as_gas();
                     let args = burn_gas.to_le_bytes().to_vec();
                     let tx = SignedTransaction::call(
                         nonce.get(),
@@ -960,7 +960,7 @@ pub(crate) fn promise_yield_repro_missing_trie_value(
                         0,
                         "call_yield_create_return_promise".to_string(),
                         yield_payload.clone(),
-                        300 * TGAS,
+                        Gas::from_gas(300 * TGAS),
                         tip.last_block_hash,
                     );
                     store_and_submit_tx(
@@ -1037,7 +1037,7 @@ pub(crate) fn promise_yield_repro_missing_trie_value(
                         1,
                         "call_yield_resume_read_data_id_from_storage".to_string(),
                         yield_payload.clone(),
-                        300 * TGAS,
+                        Gas::from_gas(300 * TGAS),
                         tip.last_block_hash,
                     );
                     store_and_submit_tx(

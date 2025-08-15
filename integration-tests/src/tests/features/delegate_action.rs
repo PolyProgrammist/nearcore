@@ -199,23 +199,22 @@ fn check_meta_tx_fn_call(
 
     // static send gas is paid and burnt upfront
     let static_send_gas = fee_helper.cfg().fee(ActionCosts::new_action_receipt).send_fee(false)
-        + num_fn_calls as u64
-            * fee_helper.cfg().fee(ActionCosts::function_call_base).send_fee(false)
-        + msg_len * fee_helper.cfg().fee(ActionCosts::function_call_byte).send_fee(false);
+        .checked_add(fee_helper.cfg().fee(ActionCosts::function_call_base).send_fee(false).saturating_mul(num_fn_calls as u64)).unwrap()
+        .checked_add(fee_helper.cfg().fee(ActionCosts::function_call_byte).send_fee(false).saturating_mul(msg_len)).unwrap();
     // static execution gas burnt in the same receipt as the function calls but
     // it doesn't contribute to the contract reward
     let static_exec_gas = fee_helper.cfg().fee(ActionCosts::new_action_receipt).exec_fee()
-        + num_fn_calls as u64 * fee_helper.cfg().fee(ActionCosts::function_call_base).exec_fee()
-        + msg_len * fee_helper.cfg().fee(ActionCosts::function_call_byte).exec_fee();
+        .checked_add(fee_helper.cfg().fee(ActionCosts::function_call_base).exec_fee().saturating_mul(num_fn_calls as u64)).unwrap()
+        .checked_add(fee_helper.cfg().fee(ActionCosts::function_call_byte).exec_fee().saturating_mul(msg_len)).unwrap();
 
     // calculate contract rewards as reward("gas burnt in fn call receipt" - "static exec costs")
     let gas_burnt_for_function_call =
-        tx_result.receipts_outcome[1].outcome.gas_burnt.as_gas() - static_exec_gas;
+        tx_result.receipts_outcome[1].outcome.gas_burnt.saturating_sub(static_exec_gas);
     let dyn_cost = fee_helper.gas_to_balance(gas_burnt_for_function_call);
     let contract_reward = fee_helper.gas_burnt_to_reward(gas_burnt_for_function_call);
 
     // Calculate cost of gas refund
-    let gross_gas_refund = prepaid_gas - gas_burnt_for_function_call;
+    let gross_gas_refund = prepaid_gas.saturating_sub(gas_burnt_for_function_call);
     let refund_penalty = fee_helper.gas_refund_cost(gross_gas_refund);
 
     // the relayer pays all gas and tokens
