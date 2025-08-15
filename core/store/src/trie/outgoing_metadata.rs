@@ -452,8 +452,8 @@ mod tests {
 
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(10)), false);
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(50)), false);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 100), true);
-        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), 0), false);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(100)), true);
+        assert_eq!(config.should_start_new_group(&group, ByteSize::kb(0), Gas::from_gas(0)), false);
 
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(10), 30), false);
         assert_eq!(config.should_start_new_group(&group, ByteSize::kb(100), 30), true);

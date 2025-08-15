@@ -458,14 +458,14 @@ mod test {
         );
 
         for action in ActionCosts::iter() {
-            assert_eq!(1234, profile.get_action_cost(action), "{action:?}");
+            assert_eq!(Gas::from_gas(1234), profile.get_action_cost(action), "{action:?}");
         }
 
         for ext in ExtCosts::iter() {
-            assert_eq!(5678, profile.get_ext_cost(ext), "{ext:?}");
+            assert_eq!(Gas::from_gas(5678), profile.get_ext_cost(ext), "{ext:?}");
         }
 
-        assert_eq!(90, profile.wasm_gas);
+        assert_eq!(Gas::from_gas(90), profile.wasm_gas);
     }
 
     #[track_caller]
