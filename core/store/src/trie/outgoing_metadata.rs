@@ -489,22 +489,22 @@ mod tests {
 
         assert_eq!(group_sizes(&queue, trie_update), Vec::<u64>::new());
 
-        queue.update_on_receipt_pushed(ten_kb, 10, trie_update, &config).unwrap();
+        queue.update_on_receipt_pushed(ten_kb, Gas::from_gas(10), trie_update, &config).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![10_000]);
 
-        queue.update_on_receipt_pushed(ten_kb, 10, trie_update, &config).unwrap();
+        queue.update_on_receipt_pushed(ten_kb, Gas::from_gas(10), trie_update, &config).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![20_000]);
 
-        queue.update_on_receipt_pushed(fifty_kb, 10, trie_update, &config).unwrap();
+        queue.update_on_receipt_pushed(fifty_kb, Gas::from_gas(10), trie_update, &config).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![70_000]);
 
         queue.update_on_receipt_popped(ten_kb, Gas::from_gas(10), trie_update).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![60_000]);
 
-        queue.update_on_receipt_pushed(hundred_kb, 10, trie_update, &config).unwrap();
+        queue.update_on_receipt_pushed(hundred_kb, Gas::from_gas(10), trie_update, &config).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![60_000, 100_000]);
 
-        queue.update_on_receipt_pushed(ten_kb, 10, trie_update, &config).unwrap();
+        queue.update_on_receipt_pushed(ten_kb, Gas::from_gas(10), trie_update, &config).unwrap();
         assert_eq!(group_sizes(&queue, trie_update), vec![60_000, 100_000, 10_000]);
 
         queue.update_on_receipt_pushed(two_hundred_kb, Gas::from_gas(10), trie_update, &config).unwrap();
