@@ -702,12 +702,12 @@ mod tests {
 
         info.add_buffered_receipt_gas(config.max_congestion_outgoing_gas).unwrap();
         info.add_buffered_receipt_gas(Gas::from_gas(500)).unwrap();
-        info.remove_buffered_receipt_gas(Gas::from_gas(500)).unwrap();
+        info.remove_buffered_receipt_gas(Gas::from_gas(500).as_gas() as u128).unwrap();
 
         let control = CongestionControl::new(config, info, 0);
         assert_eq!(1.0, control.congestion_level());
         // fully congested, no more forwarding allowed
-        assert_eq!(0, control.outgoing_gas_limit(ShardId::new(1)));
+        assert_eq!(Gas::from_gas(0), control.outgoing_gas_limit(ShardId::new(1)));
         assert!(control.shard_accepts_transactions().is_no());
         // processing to other shards is not restricted by own outgoing congestion
         assert_eq!(config.max_tx_gas, control.process_tx_limit());
@@ -717,7 +717,7 @@ mod tests {
 
         // reduce congestion to 80%
         let gas_diff = config.max_congestion_outgoing_gas.checked_div(5).unwrap();
-        info.remove_buffered_receipt_gas(gas_diff.into()).unwrap();
+        info.remove_buffered_receipt_gas(gas_diff.as_gas() as u128).unwrap();
         let control = CongestionControl::new(config, info, 0);
         assert_eq!(0.8, control.congestion_level());
         assert_eq!(
@@ -728,8 +728,8 @@ mod tests {
         assert!(control.shard_accepts_transactions().is_no());
 
         // reduce congestion to 10%
-        let gas_diff = config.max_congestion_outgoing_gas.saturating_mul(7).checked_div(10).unwrap();
-        info.remove_buffered_receipt_gas(gas_diff.into()).unwrap();
+        let gas_diff = config.max_congestion_outgoing_gas.checked_mul(7).unwrap().checked_div(10).unwrap();
+        info.remove_buffered_receipt_gas(gas_diff.as_gas() as u128).unwrap();
         let control = CongestionControl::new(config, info, 0);
         assert_eq!(0.1, control.congestion_level());
         assert_eq!(

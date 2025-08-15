@@ -367,26 +367,26 @@ mod test {
     #[test]
     fn test_no_panic_on_overflow() {
         let mut profile_data = ProfileDataV3::default();
-        profile_data.add_action_cost(ActionCosts::add_full_access_key, u64::MAX);
-        profile_data.add_action_cost(ActionCosts::add_full_access_key, u64::MAX);
+        profile_data.add_action_cost(ActionCosts::add_full_access_key, Gas::from_gas(u64::MAX));
+        profile_data.add_action_cost(ActionCosts::add_full_access_key, Gas::from_gas(u64::MAX));
 
         let res = profile_data.get_action_cost(ActionCosts::add_full_access_key);
-        assert_eq!(res, u64::MAX);
+        assert_eq!(res, Gas::from_gas(u64::MAX));
     }
 
     #[test]
     fn test_merge() {
         let mut profile_data = ProfileDataV3::default();
-        profile_data.add_action_cost(ActionCosts::add_full_access_key, 111);
-        profile_data.add_ext_cost(ExtCosts::storage_read_base, 11);
+        profile_data.add_action_cost(ActionCosts::add_full_access_key, Gas::from_gas(111));
+        profile_data.add_ext_cost(ExtCosts::storage_read_base, Gas::from_gas(11));
 
         let mut profile_data2 = ProfileDataV3::default();
-        profile_data2.add_action_cost(ActionCosts::add_full_access_key, 222);
-        profile_data2.add_ext_cost(ExtCosts::storage_read_base, 22);
+        profile_data2.add_action_cost(ActionCosts::add_full_access_key, Gas::from_gas(222));
+        profile_data2.add_ext_cost(ExtCosts::storage_read_base, Gas::from_gas(22));
 
         profile_data.merge(&profile_data2);
-        assert_eq!(profile_data.get_action_cost(ActionCosts::add_full_access_key), 333);
-        assert_eq!(profile_data.get_ext_cost(ExtCosts::storage_read_base), 33);
+        assert_eq!(profile_data.get_action_cost(ActionCosts::add_full_access_key), Gas::from_gas(333));
+        assert_eq!(profile_data.get_ext_cost(ExtCosts::storage_read_base), Gas::from_gas(33));
     }
 
     #[test]
@@ -395,17 +395,17 @@ mod test {
         let mut profile_data = ProfileDataV3::default();
         profile_data.add_ext_cost(
             ExtCosts::storage_read_base,
-            2 * ExtCosts::storage_read_base.gas(&ext_costs_config),
+            ExtCosts::storage_read_base.gas(&ext_costs_config).checked_mul(2).unwrap(),
         );
         profile_data.add_ext_cost(
             ExtCosts::storage_write_base,
-            ExtCosts::storage_write_base.gas(&ext_costs_config).saturating_mul(5),
+            ExtCosts::storage_write_base.gas(&ext_costs_config).checked_mul(5).unwrap(),
         );
         profile_data.add_action_cost(ActionCosts::function_call_base, Gas::from_gas(100));
 
         assert_eq!(
             profile_data.total_compute_usage(&ext_costs_config),
-            profile_data.host_gas().saturating_mul(3).checked_add(profile_data.action_gas()).unwrap()
+            profile_data.host_gas().checked_mul(3).unwrap().checked_add(profile_data.action_gas()).unwrap().as_gas()
         );
     }
 
