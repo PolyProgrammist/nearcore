@@ -437,13 +437,13 @@ mod test {
         let profile: ProfileDataV3 = BorshDeserialize::deserialize(&mut input.as_slice())
             .expect("should be able to parse a profile with less entries");
 
-        assert_eq!(50, profile.get_action_cost(ActionCosts::create_account));
-        assert_eq!(60, profile.get_action_cost(ActionCosts::delete_account));
-        assert_eq!(0, profile.get_action_cost(ActionCosts::deploy_contract_base));
+        assert_eq!(Gas::from_gas(50), profile.get_action_cost(ActionCosts::create_account));
+        assert_eq!(Gas::from_gas(60), profile.get_action_cost(ActionCosts::delete_account));
+        assert_eq!(Gas::from_gas(0), profile.get_action_cost(ActionCosts::deploy_contract_base));
 
-        assert_eq!(100, profile.get_ext_cost(ExtCosts::base));
-        assert_eq!(200, profile.get_ext_cost(ExtCosts::contract_loading_base));
-        assert_eq!(0, profile.get_ext_cost(ExtCosts::contract_loading_bytes));
+        assert_eq!(Gas::from_gas(100), profile.get_ext_cost(ExtCosts::base));
+        assert_eq!(Gas::from_gas(200), profile.get_ext_cost(ExtCosts::contract_loading_base));
+        assert_eq!(Gas::from_gas(0), profile.get_ext_cost(ExtCosts::contract_loading_bytes));
     }
 
     #[test]

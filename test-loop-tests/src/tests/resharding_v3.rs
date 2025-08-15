@@ -1163,7 +1163,7 @@ fn slow_test_resharding_v3_delayed_receipts_left_child() {
         .add_loop_action(call_burn_gas_contract(
             vec![account.clone()],
             vec![account.clone()],
-            275 * TGAS,
+            Gas::from_gas(275 * TGAS),
             DEFAULT_EPOCH_LENGTH,
         ))
         .add_loop_action(check_receipts_presence_at_resharding_block(
@@ -1219,7 +1219,7 @@ fn test_resharding_v3_global_contract_base(
         .add_loop_action(call_burn_gas_contract(
             caller_accounts,
             vec![global_contract_user.clone()],
-            275 * TGAS,
+            Gas::from_gas(275 * TGAS),
             INCREASED_EPOCH_LENGTH,
         ))
         .epoch_length(INCREASED_EPOCH_LENGTH)
@@ -1240,7 +1240,7 @@ fn slow_test_resharding_v3_delayed_receipts_right_child() {
         .add_loop_action(call_burn_gas_contract(
             vec![account.clone()],
             vec![account.clone()],
-            275 * TGAS,
+            Gas::from_gas(275 * TGAS),
             INCREASED_EPOCH_LENGTH,
         ))
         .add_loop_action(check_receipts_presence_at_resharding_block(
@@ -1265,7 +1265,7 @@ fn slow_test_resharding_v3_split_parent_buffered_receipts() {
         .add_loop_action(call_burn_gas_contract(
             vec![account_in_left_child.clone(), account_in_right_child],
             vec![receiver_account],
-            10 * TGAS,
+            Gas::from_gas(10 * TGAS),
             INCREASED_EPOCH_LENGTH,
         ))
         .add_loop_action(check_receipts_presence_at_resharding_block(
@@ -1295,7 +1295,7 @@ fn slow_test_resharding_v3_buffered_receipts_towards_splitted_shard() {
         .add_loop_action(call_burn_gas_contract(
             vec![account_in_stable_shard.clone()],
             vec![account_in_left_child, account_in_right_child],
-            10 * TGAS,
+            Gas::from_gas(10 * TGAS),
             DEFAULT_EPOCH_LENGTH,
         ))
         .add_loop_action(check_receipts_presence_at_resharding_block(
