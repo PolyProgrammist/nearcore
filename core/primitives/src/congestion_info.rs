@@ -799,9 +799,9 @@ mod tests {
         control.info.finalize_allowed_shard(shard, &all_shards, 3);
 
         let expected_outgoing_limit =
-            0.5 * config.min_outgoing_gas as f64 + 0.5 * config.max_outgoing_gas as f64;
+            0.5 * config.min_outgoing_gas.as_gas() as f64 + 0.5 * config.max_outgoing_gas.as_gas() as f64;
         for &shard in &all_shards {
-            assert_eq!(control.outgoing_gas_limit(shard), expected_outgoing_limit as u64);
+            assert_eq!(control.outgoing_gas_limit(shard), Gas::from_gas(expected_outgoing_limit as u64));
         }
 
         // Test with some missed chunks congestion.
@@ -811,9 +811,9 @@ mod tests {
         control.info.finalize_allowed_shard(shard, &all_shards, 3);
 
         let expected_outgoing_limit =
-            mix(config.max_outgoing_gas, config.min_outgoing_gas, 0.8) as f64;
+            mix(config.max_outgoing_gas.as_gas(), config.min_outgoing_gas.as_gas(), 0.8) as f64;
         for &shard in &all_shards {
-            assert_eq!(control.outgoing_gas_limit(shard), expected_outgoing_limit as u64);
+            assert_eq!(control.outgoing_gas_limit(shard), Gas::from_gas(expected_outgoing_limit as u64));
         }
 
         // Test with full missed chunks congestion.
@@ -827,7 +827,7 @@ mod tests {
             if shard == ShardId::from(control.info.allowed_shard()) {
                 assert_eq!(control.outgoing_gas_limit(shard), config.allowed_shard_outgoing_gas);
             } else {
-                assert_eq!(control.outgoing_gas_limit(shard), 0);
+                assert_eq!(control.outgoing_gas_limit(shard), Gas::from_gas(0));
             }
         }
     }

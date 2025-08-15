@@ -71,7 +71,7 @@ pub fn test_smart_contract_simple(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(alice_account(), bob_account(), "run_test", vec![], 10u64.pow(14), 0)
+        .function_call(alice_account(), bob_account(), "run_test", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -115,7 +115,7 @@ pub fn test_smart_contract_self_call(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), account_id.clone(), "run_test", vec![], 10u64.pow(14), 0)
+        .function_call(account_id.clone(), account_id.clone(), "run_test", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -132,7 +132,7 @@ pub fn test_smart_contract_bad_method_name(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), "_run_test", vec![], 10u64.pow(14), 0)
+        .function_call(account_id.clone(), bob_account(), "_run_test", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -157,7 +157,7 @@ pub fn test_smart_contract_empty_method_name_with_no_tokens(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), "", vec![], 10u64.pow(14), 0)
+        .function_call(account_id.clone(), bob_account(), "", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -182,7 +182,7 @@ pub fn test_smart_contract_empty_method_name_with_tokens(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), "", vec![], 10u64.pow(14), 10)
+        .function_call(account_id.clone(), bob_account(), "", vec![], Gas::from_gas(10u64.pow(14)), 10)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -230,7 +230,7 @@ pub fn test_async_call_with_logs(node: impl Node) {
     let node_user = node.user();
     let root = node_user.get_state_root();
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), "log_something", vec![], 10u64.pow(14), 0)
+        .function_call(account_id.clone(), bob_account(), "log_something", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(transaction_result.status, FinalExecutionStatus::SuccessValue(Vec::new()));
     assert_eq!(transaction_result.receipts_outcome.len(), 2);
@@ -526,7 +526,7 @@ pub fn test_smart_contract_reward(node: impl Node) {
     let bob = node_user.view_account(&bob_account()).unwrap();
     assert_eq!(bob.amount, TESTING_INIT_BALANCE - TESTING_INIT_STAKE);
     let transaction_result = node_user
-        .function_call(alice_account(), bob_account(), "run_test", vec![], 10u64.pow(14), 0)
+        .function_call(alice_account(), bob_account(), "run_test", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap();
     assert_eq!(
         transaction_result.status,
@@ -1128,7 +1128,7 @@ pub fn test_access_key_smart_contract_reject_method_name(node: impl Node) {
     node_user.set_signer(Arc::new(signer2));
 
     let transaction_result = node_user
-        .function_call(account_id.clone(), bob_account(), "run_test", vec![], 10u64.pow(14), 0)
+        .function_call(account_id.clone(), bob_account(), "run_test", vec![], Gas::from_gas(10u64.pow(14)), 0)
         .unwrap_err();
     assert_eq!(transaction_result, CommitError::OutcomeNotFound);
 }
