@@ -347,14 +347,14 @@ pub(crate) fn action_stake(
     let increment = stake.stake.saturating_sub(account.locked());
 
     if account.amount() >= increment {
-        if account.locked() == 0 && stake.stake == 0 {
+        if account.locked() == Balance::ZERO && stake.stake == Balance::ZERO {
             // if the account hasn't staked, it cannot unstake
             result.result =
                 Err(ActionErrorKind::TriesToUnstake { account_id: account_id.clone() }.into());
             return Ok(());
         }
 
-        if stake.stake > 0 {
+        if stake.stake > Balance::ZERO {
             let minimum_stake = epoch_info_provider.minimum_stake(last_block_hash)?;
             if stake.stake < minimum_stake {
                 result.result = Err(ActionErrorKind::InsufficientStake {
@@ -374,7 +374,7 @@ pub(crate) fn action_stake(
         ));
         if stake.stake > account.locked() {
             // We've checked above `account.amount >= increment`
-            account.set_amount(account.amount() - increment);
+            account.set_amount(account.amount().checked_sub(increment).unwrap());
             account.set_locked(stake.stake);
         }
     } else {
@@ -461,8 +461,8 @@ pub(crate) fn action_create_account(
 
     *actor_id = account_id.clone();
     *account = Some(Account::new(
-        0,
-        0,
+        Balance::ZERO,
+        Balance::ZERO,
         AccountContract::None,
         fee_config.storage_usage_config.num_bytes_account,
     ));
@@ -494,7 +494,7 @@ pub(crate) fn action_implicit_account_creation_transfer(
 
             *account = Some(Account::new(
                 deposit,
-                0,
+                Balance::ZERO,
                 AccountContract::None,
                 fee_config.storage_usage_config.num_bytes_account
                     + public_key.len() as u64
@@ -521,7 +521,7 @@ pub(crate) fn action_implicit_account_creation_transfer(
             let contract_hash = *magic_bytes.hash();
             *account = Some(Account::new(
                 deposit,
-                0,
+                Balance::ZERO,
                 AccountContract::from_local_code_hash(contract_hash),
                 storage_usage,
             ));
@@ -620,7 +620,7 @@ pub(crate) fn action_delete_account(
     }
     // We use current amount as a pay out to beneficiary.
     let account_balance = account_ref.amount();
-    if account_balance > 0 {
+    if account_balance > Balance::ZERO {
         result.new_receipts.push(Receipt::new_balance_refund(
             &delete_account.beneficiary_id,
             account_balance,
@@ -914,7 +914,7 @@ fn validate_delegate_action_key(
             return Ok(());
         }
         if let Some(Action::FunctionCall(function_call)) = actions.get(0) {
-            if function_call.deposit > 0 {
+            if function_call.deposit > Balance::ZERO {
                 result.result = Err(ActionErrorKind::DelegateActionAccessKeyError(
                     InvalidAccessKeyError::DepositWithFunctionCall,
                 )
@@ -994,7 +994,7 @@ pub(crate) fn check_actor_permissions(
                 .into());
             }
             let account = account.as_ref().unwrap();
-            if account.locked() != 0 {
+            if account.locked() != Balance::ZERO {
                 return Err(ActionErrorKind::DeleteAccountStaking {
                     account_id: account_id.clone(),
                 }

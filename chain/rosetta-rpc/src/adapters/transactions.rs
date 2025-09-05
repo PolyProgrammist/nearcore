@@ -2,6 +2,7 @@ use crate::models::{AccountIdentifier, Currency, FungibleTokenEvent};
 use actix::Addr;
 use near_account_id::AccountId;
 use near_primitives::hash::CryptoHash;
+use near_primitives::types::Balance;
 use near_primitives::views::{ExecutionOutcomeWithIdView, SignedTransactionView};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -299,10 +300,10 @@ pub(crate) async fn convert_block_changes_to_transactions(
                                 near_primitives::views::ActionView::Transfer { deposit } => {
                                     *deposit
                                 }
-                                _ => 0,
+                                _ => Balance::ZERO,
                             })
-                            .sum::<u128>();
-                        if total_sum == 0 { None } else { Some(total_sum) }
+                            .fold(Balance::ZERO, |sum, item| sum.checked_add(item).unwrap());
+                        if total_sum == Balance::ZERO { None } else { Some(total_sum) }
                     }),
                     _ => None,
                 };
@@ -359,7 +360,7 @@ fn convert_account_update_to_operations(
     account_id: &near_primitives::types::AccountId,
     previous_account_state: Option<&near_primitives::views::AccountView>,
     account: &near_primitives::views::AccountView,
-    deposit: Option<near_primitives::types::Balance>,
+    deposit: Option<Balance>,
     predecessor_id: &Option<crate::models::AccountIdentifier>,
 ) {
     let previous_account_balances = previous_account_state
@@ -399,8 +400,8 @@ fn convert_account_update_to_operations(
                 amount: Some(crate::models::Amount::from_yoctonear_diff(
                     crate::utils::SignedDiff::cmp(
                         // this operation is guaranteed to not underflow. Otherwise the transaction is invalid
-                        previous_account_balances.liquid - deposit,
-                        new_account_balances.liquid,
+                        previous_account_balances.liquid.checked_sub(deposit).unwrap().as_yoctonear(),
+                        new_account_balances.liquid.as_yoctonear(),
                     ),
                 )),
                 type_: crate::models::OperationType::Transfer,
@@ -425,8 +426,8 @@ fn convert_account_update_to_operations(
                 },
                 amount: Some(crate::models::Amount::from_yoctonear_diff(
                     crate::utils::SignedDiff::cmp(
-                        previous_account_balances.liquid,
-                        new_account_balances.liquid,
+                        previous_account_balances.liquid.as_yoctonear(),
+                        new_account_balances.liquid.as_yoctonear(),
                     ),
                 )),
                 type_: crate::models::OperationType::Transfer,
@@ -461,8 +462,8 @@ fn convert_account_update_to_operations(
             },
             amount: Some(crate::models::Amount::from_yoctonear_diff(
                 crate::utils::SignedDiff::cmp(
-                    previous_account_balances.liquid_for_storage,
-                    new_account_balances.liquid_for_storage,
+                    previous_account_balances.liquid_for_storage.as_yoctonear(),
+                    new_account_balances.liquid_for_storage.as_yoctonear(),
                 ),
             )),
             type_: crate::models::OperationType::Transfer,
@@ -482,8 +483,8 @@ fn convert_account_update_to_operations(
             },
             amount: Some(crate::models::Amount::from_yoctonear_diff(
                 crate::utils::SignedDiff::cmp(
-                    previous_account_balances.locked,
-                    new_account_balances.locked,
+                    previous_account_balances.locked.as_yoctonear(),
+                    new_account_balances.locked.as_yoctonear(),
                 ),
             )),
             type_: crate::models::OperationType::Transfer,
@@ -517,8 +518,8 @@ fn convert_account_delete_to_operations(
             },
             amount: Some(crate::models::Amount::from_yoctonear_diff(
                 crate::utils::SignedDiff::cmp(
-                    previous_account_balances.liquid,
-                    new_account_balances.liquid,
+                    previous_account_balances.liquid.as_yoctonear(),
+                    new_account_balances.liquid.as_yoctonear(),
                 ),
             )),
             type_: crate::models::OperationType::Transfer,
@@ -538,8 +539,8 @@ fn convert_account_delete_to_operations(
             },
             amount: Some(crate::models::Amount::from_yoctonear_diff(
                 crate::utils::SignedDiff::cmp(
-                    previous_account_balances.liquid_for_storage,
-                    new_account_balances.liquid_for_storage,
+                    previous_account_balances.liquid_for_storage.as_yoctonear(),
+                    new_account_balances.liquid_for_storage.as_yoctonear(),
                 ),
             )),
             type_: crate::models::OperationType::Transfer,
@@ -559,8 +560,8 @@ fn convert_account_delete_to_operations(
             },
             amount: Some(crate::models::Amount::from_yoctonear_diff(
                 crate::utils::SignedDiff::cmp(
-                    previous_account_balances.locked,
-                    new_account_balances.locked,
+                    previous_account_balances.locked.as_yoctonear(),
+                    new_account_balances.locked.as_yoctonear(),
                 ),
             )),
             type_: crate::models::OperationType::Transfer,
@@ -582,7 +583,7 @@ fn convert_fungible_token_balance_change_to_operations(
         )
         .unwrap(),
         amount: Some(crate::models::Amount {
-            value: crate::utils::SignedDiff::from(fungible_token_event.delta_amount),
+            value: fungible_token_event.delta_amount,
             currency: Currency {
                 symbol: fungible_token_event.symbol.clone(),
                 decimals: fungible_token_event.decimals,
