@@ -57,7 +57,7 @@ use near_primitives::transaction::{
     Transaction, TransactionV0,
 };
 use near_primitives::trie_key::TrieKey;
-use near_primitives::types::{AccountId, BlockHeight, EpochId, Gas, NumBlocks};
+use near_primitives::types::{AccountId, Balance, BlockHeight, EpochId, Gas, NumBlocks};
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::{FinalExecutionStatus, QueryRequest, QueryResponseKind};
 use near_primitives_core::num_rational::Ratio;
@@ -151,8 +151,8 @@ fn receive_network_block() {
                 None,
                 vec![],
                 Ratio::from_integer(0),
-                0,
-                100,
+                Balance::ZERO,
+                Balance::from_yoctonear(100),
                 None,
                 &signer,
                 last_block.header.next_bp_hash,
@@ -242,9 +242,9 @@ fn produce_block_with_approvals() {
                 None,
                 vec![],
                 Ratio::from_integer(0),
-                0,
-                100,
-                Some(0),
+                Balance::ZERO,
+                Balance::from_yoctonear(100),
+                Some(Balance::ZERO),
                 &signer1,
                 last_block.header.next_bp_hash,
                 block_merkle_tree.root(),
@@ -349,9 +349,9 @@ fn invalid_blocks_common(is_requested: bool) {
                 None,
                 vec![],
                 Ratio::from_integer(0),
-                0,
-                100,
-                Some(0),
+                Balance::ZERO,
+                Balance::from_yoctonear(100),
+                Some(Balance::ZERO),
                 &signer,
                 last_block.header.next_bp_hash,
                 block_merkle_tree.root(),
@@ -624,14 +624,14 @@ fn test_no_double_sign() {
 fn test_invalid_gas_price() {
     init_test_logger();
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap()], 1);
-    genesis.config.min_gas_price = 100;
+    genesis.config.min_gas_price = Balance::from_yoctonear(100);
     let mut env = TestEnv::builder_from_genesis(&genesis).clients_count(1).build();
     let client = &mut env.clients[0];
     let signer = client.validator_signer.get().unwrap();
 
     let genesis = client.chain.get_block_by_height(0).unwrap();
     let mut b1 = TestBlockBuilder::new(Clock::real(), &genesis, signer.clone()).build();
-    Arc::make_mut(&mut b1).mut_header().set_next_gas_price(0);
+    Arc::make_mut(&mut b1).mut_header().set_next_gas_price(Balance::ZERO);
     Arc::make_mut(&mut b1).mut_header().resign(signer.as_ref());
 
     let res = client.process_block_test(b1.into(), Provenance::NONE);
@@ -873,14 +873,14 @@ fn test_bad_chunk_mask() {
 fn test_minimum_gas_price() {
     let min_gas_price = 100;
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap()], 1);
-    genesis.config.min_gas_price = min_gas_price;
+    genesis.config.min_gas_price = Balance::from_yoctonear(min_gas_price);
     genesis.config.gas_price_adjustment_rate = Ratio::new(1, 10);
     let mut env = TestEnv::builder_from_genesis(&genesis).build();
     for i in 1..=100 {
         env.produce_block(0, i);
     }
     let block = env.clients[0].chain.get_block_by_height(100).unwrap();
-    assert!(block.header().next_gas_price() >= min_gas_price);
+    assert!(block.header().next_gas_price() >= Balance::from_yoctonear(min_gas_price));
 }
 
 fn test_gc_with_epoch_length_common(epoch_length: NumBlocks) {
@@ -952,7 +952,7 @@ fn test_archival_save_trie_changes() {
 
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.epoch_length = epoch_length;
-    genesis.config.total_supply = 1_000_000_000;
+    genesis.config.total_supply = Balance::from_yoctonear(1_000_000_000);
     let mut env = TestEnv::builder(&genesis.config)
         .nightshade_runtimes(&genesis)
         .archive(true)
@@ -1196,7 +1196,7 @@ fn test_gc_execution_outcome() {
         "test0".parse().unwrap(),
         "test1".parse().unwrap(),
         &signer,
-        100,
+        Balance::from_yoctonear(100),
         genesis_hash,
     );
     let tx_hash = tx.get_hash();
@@ -1432,7 +1432,7 @@ fn test_tx_forward_around_epoch_boundary() {
         "test1".parse().unwrap(),
         "test0".parse().unwrap(),
         &signer,
-        1,
+        Balance::from_yoctonear(1),
         genesis_hash,
     );
     assert_eq!(env.rpc_handlers[2].process_tx(tx, false, false), ProcessTxResponse::RequestRouted);
@@ -1570,7 +1570,7 @@ fn test_gc_tail_update() {
 fn test_gas_price_change() {
     init_test_logger();
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
-    let target_num_tokens_left = NEAR_BASE / 10 + 1;
+    let target_num_tokens_left = NEAR_BASE.checked_div(10).unwrap().saturating_add(Balance::from_yoctonear(1));
     let transaction_costs = RuntimeConfig::test().fees;
 
     let send_money_total_gas = transaction_costs
@@ -1582,7 +1582,7 @@ fn test_gas_price_change() {
         .unwrap()
         .checked_add(transaction_costs.fee(ActionCosts::new_action_receipt).exec_fee())
         .unwrap();
-    let min_gas_price = target_num_tokens_left / u128::from(send_money_total_gas.as_gas());
+    let min_gas_price = target_num_tokens_left.checked_div(u128::from(send_money_total_gas.as_gas())).unwrap();
     let gas_limit = 1000000000000;
     let gas_price_adjustment_rate = Ratio::new(1, 10);
 
@@ -1600,8 +1600,8 @@ fn test_gas_price_change() {
         "test0".parse().unwrap(),
         &signer,
         TESTING_INIT_BALANCE
-            - target_num_tokens_left
-            - u128::from(send_money_total_gas.as_gas()) * min_gas_price,
+            .checked_sub(target_num_tokens_left).unwrap()
+            .checked_sub(Balance::from_yoctonear(u128::from(send_money_total_gas.as_gas()) * min_gas_price.as_yoctonear())).unwrap(),
         genesis_hash,
     );
     assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
@@ -1611,7 +1611,7 @@ fn test_gas_price_change() {
         "test1".parse().unwrap(),
         "test0".parse().unwrap(),
         &signer,
-        1,
+        Balance::from_yoctonear(1),
         genesis_hash,
     );
     assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
@@ -1623,8 +1623,8 @@ fn test_gas_price_change() {
 #[test]
 fn test_gas_price_overflow() {
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
-    let min_gas_price = 1000000;
-    let max_gas_price = 10_u128.pow(20);
+    let min_gas_price = Balance::from_yoctonear(1000000);
+    let max_gas_price = Balance::from_yoctonear(10_u128.pow(20));
     let gas_limit = 450000000000;
     let gas_price_adjustment_rate = Ratio::from_integer(1);
     genesis.config.min_gas_price = min_gas_price;
@@ -1644,7 +1644,7 @@ fn test_gas_price_overflow() {
             "test1".parse().unwrap(),
             "test0".parse().unwrap(),
             &signer,
-            1,
+            Balance::from_yoctonear(1),
             genesis_hash,
         );
         assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
@@ -1878,7 +1878,7 @@ fn test_validate_chunk_extra() {
     let epoch_length = 5;
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.epoch_length = epoch_length;
-    genesis.config.min_gas_price = 0;
+    genesis.config.min_gas_price = Balance::ZERO;
     let mut env = TestEnv::builder(&genesis.config).nightshade_runtimes(&genesis).build();
     let genesis_block = env.clients[0].chain.get_block_by_height(0).unwrap();
 
@@ -1912,7 +1912,7 @@ fn test_validate_chunk_extra() {
             method_name: "write_block_height".to_string(),
             args: vec![],
             gas: Gas::from_tera(100),
-            deposit: 0,
+            deposit: Balance::ZERO,
         }))],
         *last_block.hash(),
         0,
@@ -2038,7 +2038,7 @@ fn test_validate_chunk_extra() {
 fn slow_test_catchup_gas_price_change() {
     init_test_logger();
     let epoch_length = 8;
-    let min_gas_price = 10000;
+    let min_gas_price = Balance::from_yoctonear(10000);
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.epoch_length = epoch_length;
     genesis.config.min_gas_price = min_gas_price;
@@ -2066,7 +2066,7 @@ fn slow_test_catchup_gas_price_change() {
             "test0".parse().unwrap(),
             "test1".parse().unwrap(),
             &signer,
-            1,
+            Balance::from_yoctonear(1),
             *genesis_block.hash(),
         );
 
@@ -2190,7 +2190,7 @@ fn test_block_execution_outcomes() {
     init_test_logger();
 
     let epoch_length = 5;
-    let min_gas_price = 10000;
+    let min_gas_price = Balance::from_yoctonear(10000);
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.epoch_length = epoch_length;
     genesis.config.min_gas_price = min_gas_price;
@@ -2206,7 +2206,7 @@ fn test_block_execution_outcomes() {
             "test0".parse().unwrap(),
             "test0".parse().unwrap(),
             &signer,
-            1,
+            Balance::from_yoctonear(1),
             *genesis_block.hash(),
         );
         tx_hashes.push(tx.get_hash());
@@ -2272,7 +2272,7 @@ fn test_save_tx_outcomes_false() {
     init_test_logger();
 
     let epoch_length = 5;
-    let min_gas_price = 10000;
+    let min_gas_price = Balance::from_yoctonear(10000);
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.epoch_length = epoch_length;
     genesis.config.min_gas_price = min_gas_price;
@@ -2292,7 +2292,7 @@ fn test_save_tx_outcomes_false() {
             "test0".parse().unwrap(),
             "test0".parse().unwrap(),
             &signer,
-            1,
+            Balance::from_yoctonear(1),
             *genesis_block.hash(),
         );
         tx_hashes.push(tx.get_hash());
@@ -2316,7 +2316,7 @@ fn test_refund_receipts_processing() {
     init_test_logger();
 
     let epoch_length = 5;
-    let min_gas_price = 10000;
+    let min_gas_price = Balance::from_yoctonear(10000);
     let mut genesis = Genesis::test_sharded_new_version(
         vec!["test0".parse().unwrap(), "test1".parse().unwrap()],
         1,
@@ -2339,7 +2339,7 @@ fn test_refund_receipts_processing() {
             "test0".parse().unwrap(),
             "random_account".parse().unwrap(),
             &signer,
-            1,
+            Balance::from_yoctonear(1),
             *genesis_block.hash(),
         );
         tx_hashes.push(tx.get_hash());
@@ -2814,7 +2814,7 @@ fn test_query_final_state() {
         "test0".parse().unwrap(),
         "test1".parse().unwrap(),
         &signer,
-        100,
+        Balance::from_yoctonear(100),
         *genesis_block.hash(),
     );
     assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
@@ -2875,7 +2875,7 @@ fn test_query_final_state() {
         query_final_state(&mut env.clients[0].chain, runtime.clone(), "test0".parse().unwrap());
 
     assert_eq!(account_state1, account_state2);
-    assert!(account_state1.amount < TESTING_INIT_BALANCE - TESTING_INIT_STAKE);
+    assert!(account_state1.amount < TESTING_INIT_BALANCE.checked_sub(TESTING_INIT_STAKE).unwrap());
 }
 
 // Check that if the same receipt is executed twice in forked chain, both outcomes are recorded
@@ -3013,7 +3013,7 @@ fn prepare_env_with_transaction() -> (TestEnv, CryptoHash) {
         "test0".parse().unwrap(),
         "test1".parse().unwrap(),
         &signer,
-        100,
+        Balance::from_yoctonear(100),
         *genesis_block.hash(),
     );
     let tx_hash = tx.get_hash();
@@ -3257,7 +3257,7 @@ fn test_validator_stake_host_function() {
             method_name: "ext_validator_stake".to_string(),
             args: b"test0".to_vec(),
             gas: Gas::from_tera(100),
-            deposit: 0,
+            deposit: Balance::ZERO,
         }))],
         *genesis_block.hash(),
         0,

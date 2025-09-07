@@ -14,7 +14,7 @@ use testlib::runtime_utils::{add_test_contract, alice_account, bob_account};
 fn test_burn_all_gas() {
     let attached_gas = Gas::from_tera(100);
     let burn_gas = attached_gas.checked_add(Gas::ONE).unwrap();
-    let deposit = 0;
+    let deposit = Balance::ZERO;
 
     let refunds = generated_refunds_after_fn_call(attached_gas, burn_gas, deposit);
 
@@ -29,7 +29,7 @@ fn test_burn_all_gas() {
 fn test_deposit_refund() {
     let attached_gas = Gas::from_tera(100);
     let burn_gas = attached_gas.checked_add(Gas::ONE).unwrap();
-    let deposit = 10;
+    let deposit = Balance::from_yoctonear(10);
 
     let refunds = generated_refunds_after_fn_call(attached_gas, burn_gas, deposit);
 
@@ -44,7 +44,7 @@ fn test_deposit_refund() {
 fn test_big_gas_refund() {
     let attached_gas = Gas::from_tera(100);
     let burn_gas = Gas::from_tera(10);
-    let deposit = 0;
+    let deposit = Balance::ZERO;
 
     let refunds = generated_refunds_after_fn_call(attached_gas, burn_gas, deposit);
 
@@ -55,7 +55,7 @@ fn test_big_gas_refund() {
 fn test_small_gas_refund() {
     let attached_gas = Gas::from_tera(10);
     let burn_gas = attached_gas.checked_sub(Gas::from_tera(1).checked_div(2).unwrap()).unwrap();
-    let deposit = 0;
+    let deposit = Balance::ZERO;
 
     let refunds = generated_refunds_after_fn_call(attached_gas, burn_gas, deposit);
 
@@ -108,7 +108,7 @@ fn generated_refunds_after_fn_call(
     }
 
     let balance_after = node_user.view_balance(&alice_account()).unwrap();
-    let total_cost = balance_before - balance_after;
+    let total_cost = balance_before.saturating_sub(balance_after);
 
     // Make sure the total balances check out
     assert_eq!(outcome.tokens_burnt(), total_cost);
@@ -131,7 +131,7 @@ fn generated_refunds_after_fn_call(
 
     // Do a general check on the gas penalty.
     // Since gas price didn't change, the only difference must be the gas refund penalty.
-    let penalty = total_cost - expected_cost;
+    let penalty = total_cost.checked_sub(expected_cost).unwrap();
     if ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION) {
         let unspent_gas = attached_gas.checked_sub(actual_fn_call_gas_burnt).unwrap();
         let max_gas_penalty = unspent_gas.max(
@@ -146,7 +146,7 @@ fn generated_refunds_after_fn_call(
         assert!(penalty >= fee_helper.gas_to_balance(min_gas_penalty));
         assert!(penalty <= fee_helper.gas_to_balance(max_gas_penalty));
     } else {
-        assert_eq!(penalty, 0, "there should be no gas penalty in this version");
+        assert_eq!(penalty, Balance::ZERO, "there should be no gas penalty in this version");
     };
 
     // Let each test check refund receipts separately.

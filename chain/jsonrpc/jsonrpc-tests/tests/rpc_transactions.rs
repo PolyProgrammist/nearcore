@@ -13,7 +13,7 @@ use near_o11y::testonly::{init_integration_logger, init_test_logger};
 use near_primitives::hash::{CryptoHash, hash};
 use near_primitives::serialize::to_base64;
 use near_primitives::transaction::SignedTransaction;
-use near_primitives::types::BlockReference;
+use near_primitives::types::{Balance, BlockReference};
 use near_primitives::views::{FinalExecutionStatus, TxExecutionStatus};
 use near_time::Clock;
 
@@ -43,7 +43,7 @@ fn test_send_tx_async() {
                 signer_account_id.parse().unwrap(),
                 "test2".parse().unwrap(),
                 &signer,
-                100,
+                Balance::from_yoctonear(100),
                 block_hash,
             );
             let bytes = borsh::to_vec(&tx).unwrap();
@@ -98,7 +98,7 @@ fn test_send_tx_commit() {
             "test1".parse().unwrap(),
             "test2".parse().unwrap(),
             &signer,
-            100,
+            Balance::from_yoctonear(100),
             block_hash,
         );
         let bytes = borsh::to_vec(&tx).unwrap();
@@ -148,7 +148,7 @@ fn test_expired_tx() {
                                     "test1".parse().unwrap(),
                                     "test2".parse().unwrap(),
                                     &signer,
-                                    100,
+                                    Balance::from_yoctonear(100),
                                     block_hash,
                                 );
                                 let bytes = borsh::to_vec(&tx).unwrap();
@@ -192,7 +192,7 @@ fn test_replay_protection() {
             "test1".parse().unwrap(),
             "test2".parse().unwrap(),
             &signer,
-            100,
+            Balance::from_yoctonear(100),
             hash(&[1]),
         );
         let bytes = borsh::to_vec(&tx).unwrap();
@@ -233,7 +233,7 @@ fn test_check_invalid_tx() {
                 "test1".parse().unwrap(),
                 "test2".parse().unwrap(),
                 &signer,
-                100,
+                Balance::from_yoctonear(100),
                 hash(&[1]),
             )),
             wait_until: TxExecutionStatus::None,

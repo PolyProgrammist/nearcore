@@ -18,7 +18,7 @@ use near_o11y::testonly::init_test_logger;
 use near_primitives::account::{AccessKey, AccessKeyPermission};
 use near_primitives::hash::CryptoHash;
 use near_primitives::types::{
-    AccountId, BlockId, BlockReference, EpochId, Gas, ShardId, SyncCheckpoint,
+    AccountId, Balance, BlockId, BlockReference, EpochId, Gas, ShardId, SyncCheckpoint,
 };
 use near_primitives::views::{FinalExecutionStatus, QueryRequest};
 use near_time::Clock;
@@ -97,7 +97,7 @@ fn test_chunk_by_hash() {
         let chunk =
             client.chunk(ChunkId::BlockShardId(BlockId::Height(0), ShardId::new(0))).await.unwrap();
         assert_eq!(chunk.author, "test1");
-        assert_eq!(chunk.header.balance_burnt, 0);
+        assert_eq!(chunk.header.balance_burnt, Balance::ZERO);
         assert_eq!(chunk.header.chunk_hash.as_ref().len(), 32);
         assert_eq!(chunk.header.encoded_length, 8);
         assert_eq!(chunk.header.encoded_merkle_root.as_ref().len(), 32);
@@ -108,12 +108,12 @@ fn test_chunk_by_hash() {
         assert_eq!(chunk.header.outgoing_receipts_root.as_ref().len(), 32);
         assert_eq!(chunk.header.prev_block_hash.as_ref().len(), 32);
         assert_eq!(chunk.header.prev_state_root.as_ref().len(), 32);
-        assert_eq!(chunk.header.rent_paid, 0);
+        assert_eq!(chunk.header.rent_paid, Balance::ZERO);
         assert_eq!(chunk.header.shard_id, ShardId::new(0));
         assert!(if let Signature::ED25519(_) = chunk.header.signature { true } else { false });
         assert_eq!(chunk.header.tx_root.as_ref(), &[0; 32]);
         assert_eq!(chunk.header.validator_proposals, vec![]);
-        assert_eq!(chunk.header.validator_reward, 0);
+        assert_eq!(chunk.header.validator_reward, Balance::ZERO);
         let same_chunk = client.chunk(ChunkId::Hash(chunk.header.chunk_hash)).await.unwrap();
         assert_eq!(chunk.header.chunk_hash, same_chunk.header.chunk_hash);
     });
@@ -152,7 +152,7 @@ fn test_query_by_path_account() {
         };
         assert_eq!(account_info.amount, TESTING_INIT_BALANCE);
         assert_eq!(account_info.code_hash, CryptoHash::default());
-        assert_eq!(account_info.locked, 0);
+        assert_eq!(account_info.locked, Balance::ZERO);
         assert_eq!(account_info.storage_paid_at, 0);
         assert_eq!(account_info.global_contract_hash, None);
         assert_eq!(account_info.global_contract_account_id, None);
@@ -198,7 +198,7 @@ fn test_query_account() {
             };
             assert_eq!(account_info.amount, TESTING_INIT_BALANCE);
             assert_eq!(account_info.code_hash, CryptoHash::default());
-            assert_eq!(account_info.locked, 0);
+            assert_eq!(account_info.locked, Balance::ZERO);
             assert_eq!(account_info.storage_paid_at, 0);
             assert_eq!(account_info.global_contract_hash, None);
             assert_eq!(account_info.global_contract_account_id, None);
@@ -514,7 +514,7 @@ fn test_genesis_config() {
 fn test_gas_price_by_height() {
     test_with_client!(test_utils::NodeType::NonValidator, client, async move {
         let gas_price = client.gas_price(Some(BlockId::Height(0))).await.unwrap();
-        assert!(gas_price.gas_price > 0);
+        assert!(gas_price.gas_price > Balance::ZERO);
     });
 }
 
@@ -524,7 +524,7 @@ fn test_gas_price_by_hash() {
     test_with_client!(test_utils::NodeType::NonValidator, client, async move {
         let block = client.block(BlockReference::BlockId(BlockId::Height(0))).await.unwrap();
         let gas_price = client.gas_price(Some(BlockId::Hash(block.header.hash))).await.unwrap();
-        assert!(gas_price.gas_price > 0);
+        assert!(gas_price.gas_price > Balance::ZERO);
     });
 }
 
@@ -533,7 +533,7 @@ fn test_gas_price_by_hash() {
 fn test_gas_price() {
     test_with_client!(test_utils::NodeType::NonValidator, client, async move {
         let gas_price = client.gas_price(None).await.unwrap();
-        assert!(gas_price.gas_price > 0);
+        assert!(gas_price.gas_price > Balance::ZERO);
     });
 }
 
@@ -673,7 +673,7 @@ fn test_get_chunk_with_object_in_params() {
         .await
         .unwrap();
         assert_eq!(chunk.author, "test1");
-        assert_eq!(chunk.header.balance_burnt, 0);
+        assert_eq!(chunk.header.balance_burnt, Balance::ZERO);
         assert_eq!(chunk.header.chunk_hash.as_ref().len(), 32);
         assert_eq!(chunk.header.encoded_length, 8);
         assert_eq!(chunk.header.encoded_merkle_root.as_ref().len(), 32);
@@ -684,12 +684,12 @@ fn test_get_chunk_with_object_in_params() {
         assert_eq!(chunk.header.outgoing_receipts_root.as_ref().len(), 32);
         assert_eq!(chunk.header.prev_block_hash.as_ref().len(), 32);
         assert_eq!(chunk.header.prev_state_root.as_ref().len(), 32);
-        assert_eq!(chunk.header.rent_paid, 0);
+        assert_eq!(chunk.header.rent_paid, Balance::ZERO);
         assert_eq!(chunk.header.shard_id, ShardId::new(0));
         assert!(if let Signature::ED25519(_) = chunk.header.signature { true } else { false });
         assert_eq!(chunk.header.tx_root.as_ref(), &[0; 32]);
         assert_eq!(chunk.header.validator_proposals, vec![]);
-        assert_eq!(chunk.header.validator_reward, 0);
+        assert_eq!(chunk.header.validator_reward, Balance::ZERO);
         let same_chunk = client.chunk(ChunkId::Hash(chunk.header.chunk_hash)).await.unwrap();
         assert_eq!(chunk.header.chunk_hash, same_chunk.header.chunk_hash);
     });
