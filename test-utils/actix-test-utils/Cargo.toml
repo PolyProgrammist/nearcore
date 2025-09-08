@@ -13,10 +13,12 @@ workspace = true
 
 [dependencies]
 actix-rt.workspace = true
+parking_lot.workspace = true
 
+near-async.workspace = true
 near-store.workspace = true
 
 [features]
 nightly = [
-  "near-store/nightly",
+    "near-store/nightly",
 ]

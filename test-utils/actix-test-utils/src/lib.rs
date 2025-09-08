@@ -1,30 +1,35 @@
+use near_async::ActorSystem;
+use parking_lot::Mutex;
 use std::sync::LazyLock;
-use std::sync::Mutex;
 
 pub struct ShutdownableThread {
     pub join: Option<std::thread::JoinHandle<()>>,
     pub actix_system: actix_rt::System,
+    pub actor_system: ActorSystem,
 }
 
 impl ShutdownableThread {
     pub fn start<F>(_name: &'static str, f: F) -> ShutdownableThread
     where
-        F: FnOnce() + Send + 'static,
+        F: FnOnce(ActorSystem) + Send + 'static,
     {
+        let actor_system = ActorSystem::new();
+        let actor_system_clone = actor_system.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         let join = std::thread::spawn(move || {
             run_actix(async move {
-                f();
+                f(actor_system);
                 tx.send(actix_rt::System::current()).unwrap();
             });
         });
 
         let actix_system = rx.recv().unwrap();
-        ShutdownableThread { join: Some(join), actix_system }
+        ShutdownableThread { join: Some(join), actix_system, actor_system: actor_system_clone }
     }
 
     pub fn shutdown(&self) {
         self.actix_system.stop();
+        self.actor_system.stop();
     }
 }
 
@@ -73,7 +78,7 @@ pub fn block_on_interruptible<F: std::future::Future>(
 
 pub fn run_actix<F: std::future::Future>(f: F) {
     {
-        let mut value = ACTIX_INSTANCES_COUNTER.lock().unwrap();
+        let mut value = ACTIX_INSTANCES_COUNTER.lock();
         *value += 1;
     }
 
@@ -82,7 +87,7 @@ pub fn run_actix<F: std::future::Future>(f: F) {
     sys.run().unwrap();
 
     {
-        let mut value = ACTIX_INSTANCES_COUNTER.lock().unwrap();
+        let mut value = ACTIX_INSTANCES_COUNTER.lock();
         *value -= 1;
         if *value == 0 {
             // If we're the last instance - make sure to wait for all RocksDB handles to be dropped.

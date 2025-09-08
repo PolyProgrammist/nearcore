@@ -120,11 +120,12 @@ pub enum StateViewerSubCommand {
     ViewTrie(ViewTrieCmd),
     /// Tools for manually validating state witnesses.
     ///
-    /// First, dump some of the latest stored state witnesses to a directory
+    /// First, dump some of the stored state witnesses to a directory
     /// using the `dump` command. Supports selecting by given height, shard
     /// and epoch id, or pretty-printing on screen.
-    /// Note that witnesses are only stored when `save_latest_witnesses` is
-    /// set to true in config.json.
+    ///
+    /// Note that witnesses are only stored when `save_latest_witnesses`
+    /// or `save_invalid_witnesses` are set to true in config.json.
     ///
     /// Second, validate a particular state witness from a file using the
     /// `validate` command.
@@ -137,6 +138,7 @@ pub enum StateViewerSubCommand {
 }
 
 impl StateViewerSubCommand {
+    #[allow(clippy::large_stack_frames)]
     pub fn run(
         self,
         home_dir: &Path,
@@ -150,7 +152,8 @@ impl StateViewerSubCommand {
         let store_opener = NodeStorage::opener(
             home_dir,
             &near_config.config.store,
-            near_config.config.archival_config(),
+            near_config.config.cold_store.as_ref(),
+            near_config.config.cloud_storage.as_ref(),
         );
 
         let storage = store_opener.open_in_mode(mode).unwrap();
@@ -214,6 +217,9 @@ pub enum StorageSource {
     FlatStorage,
     /// Implies flat storage and loads the memtries as well.
     Memtrie,
+    /// Recorded storage, as used during chunk validation.
+    /// Only available in "benchmark" mode.
+    Recorded,
 }
 
 impl StorageSource {
@@ -225,6 +231,11 @@ impl StorageSource {
             // This is the same as FlatStorage handling. That's because memtrie initialization
             // happens as part of `ShardTries::load_memtrie` function call.
             StorageSource::Memtrie => RuntimeStorageConfig::new(state_root, true),
+            StorageSource::Recorded => {
+                panic!(
+                    "For recorded storage the RuntimeStorageConfig has to be created from storage proof"
+                );
+            }
         }
     }
 }
@@ -291,9 +302,11 @@ impl ApplyChunkCmd {
 #[derive(clap::Parser, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ApplyRangeMode {
     /// Applies chunks one after another in order of increasing heights.
-    ///
-    /// Great for profiling.
-    Sequential,
+    Sequential {
+        /// If true, saves state transitions for state witness generation.
+        #[clap(long)]
+        save_state_transitions: bool,
+    },
     /// Applies chunks in parallel.
     ///
     /// Useful for quick correctness check of applying chunks by comparing
@@ -309,8 +322,9 @@ pub struct ApplyRangeCmd {
     start_index: Option<BlockHeight>,
     #[clap(long)]
     end_index: Option<BlockHeight>,
-    #[clap(long, default_value = "0")]
-    shard_id: ShardId,
+    /// All shards by default (if not specified.) Can be provided multiple times.
+    #[clap(long)]
+    shard_id: Vec<ShardId>,
     #[clap(long)]
     verbose_output: bool,
     #[clap(long, value_parser)]
@@ -339,6 +353,7 @@ impl ApplyRangeCmd {
         }
         apply_range(
             self.mode,
+            self.storage,
             self.start_index,
             self.end_index,
             self.shard_id,
@@ -349,7 +364,6 @@ impl ApplyRangeCmd {
             store,
             self.save_state.map(|temperature| initialize_write_store(temperature, node_storage)),
             self.only_contracts,
-            self.storage,
         );
     }
 }

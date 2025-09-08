@@ -1,3 +1,4 @@
+use crate::client::{StateRequestHeader, StateRequestPart, StateResponse};
 /// Type that belong to the network protocol.
 pub use crate::network_protocol::{
     Disconnect, Encoding, Handshake, HandshakeFailureReason, PeerMessage, RoutingTableUpdate,
@@ -20,13 +21,15 @@ use near_primitives::genesis::GenesisId;
 use near_primitives::hash::CryptoHash;
 use near_primitives::network::{AnnounceAccount, PeerId};
 use near_primitives::optimistic_block::OptimisticBlock;
-use near_primitives::sharding::PartialEncodedChunkWithArcReceipts;
+use near_primitives::sharding::{PartialEncodedChunkWithArcReceipts, ReceiptProof};
 use near_primitives::stateless_validation::chunk_endorsement::ChunkEndorsement;
 use near_primitives::stateless_validation::contract_distribution::{
     ChunkContractAccesses, ContractCodeRequest, ContractCodeResponse, PartialEncodedContractDeploys,
 };
 use near_primitives::stateless_validation::partial_witness::PartialEncodedStateWitness;
-use near_primitives::stateless_validation::state_witness::ChunkStateWitnessAck;
+use near_primitives::stateless_validation::state_witness::{
+    ChunkStateWitness, ChunkStateWitnessAck,
+};
 use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::{AccountId, BlockHeight, EpochHeight, ShardId};
 use near_schema_checker_lib::ProtocolSchema;
@@ -159,7 +162,7 @@ pub type AccountKeys = HashMap<AccountId, HashSet<PublicKey>>;
 pub struct ChainInfo {
     pub tracked_shards: Vec<ShardId>,
     // The latest block on chain.
-    pub block: Block,
+    pub block: Arc<Block>,
     // Public keys of accounts participating in the BFT consensus
     // It currently includes "block producers", "chunk producers" and "approvers".
     // They are collectively known as "validators".
@@ -240,18 +243,18 @@ impl From<NetworkResponses> for PeerManagerMessageResponse {
 #[allow(clippy::large_enum_variant)]
 pub enum NetworkRequests {
     /// Sends block, either when block was just produced or when requested.
-    Block { block: Block },
+    Block { block: Arc<Block> },
     /// Sends optimistic block as soon as the production window for the height starts.
-    OptimisticBlock { optimistic_block: OptimisticBlock },
+    OptimisticBlock { chunk_producers: Arc<Vec<AccountId>>, optimistic_block: OptimisticBlock },
     /// Sends approval.
     Approval { approval_message: ApprovalMessage },
     /// Request block with given hash from given peer.
     BlockRequest { hash: CryptoHash, peer_id: PeerId },
     /// Request given block headers.
     BlockHeadersRequest { hashes: Vec<CryptoHash>, peer_id: PeerId },
-    /// Request state header for given shard at given state root.
-    StateRequestHeader { shard_id: ShardId, sync_hash: CryptoHash, peer_id: PeerId },
-    /// Request state part for given shard at given state root.
+    /// Request state header for given shard and given sync hash.
+    StateRequestHeader { shard_id: ShardId, sync_hash: CryptoHash, sync_prev_prev_hash: CryptoHash },
+    /// Request state part for given shard and given sync hash.
     StateRequestPart {
         shard_id: ShardId,
         sync_hash: CryptoHash,
@@ -308,6 +311,12 @@ pub enum NetworkRequests {
     /// Message originates from the chunk producer and distributed among other validators,
     /// containing the code of the newly-deployed contracts during the main state transition of the witness.
     PartialEncodedContractDeploys(Vec<AccountId>, PartialEncodedContractDeploys),
+    // TODO(spice): remove and depend on separate data distribution.
+    /// Mocked message to the chunk executor with block hash and relevant incoming receipts.
+    TestonlySpiceIncomingReceipts { block_hash: CryptoHash, receipt_proofs: Vec<ReceiptProof> },
+    /// Mocked message with state witness that will eventually be distributed by the spice
+    /// distribution layer.
+    TestonlySpiceStateWitness { state_witness: ChunkStateWitness },
 }
 
 #[derive(Debug, actix::Message, strum::IntoStaticStr)]
@@ -420,6 +429,13 @@ pub struct NetworkInfo {
 pub enum NetworkResponses {
     NoResponse,
     RouteNotFound,
+    /// For some requests, it is necessary that the node has successfully
+    /// performed IP self-discovery
+    MyPublicAddrNotKnown,
+    NoDestinationsAvailable,
+    /// Occurs in response to NetworkRequests which do not specify a target peer;
+    /// the network layer selects and returns the destination for the message.
+    SelectedDestination(PeerId),
 }
 
 #[derive(Clone, MultiSend, MultiSenderFrom)]
@@ -437,10 +453,20 @@ pub struct PeerManagerSenderForNetwork {
     pub tier3_request_sender: Sender<Tier3Request>,
 }
 
+#[derive(Clone, MultiSend, MultiSenderFrom, MultiSendMessage)]
+#[multi_send_message_derive(Debug)]
+#[multi_send_input_derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateRequestSenderForNetwork {
+    pub state_request_header: AsyncSender<StateRequestHeader, Option<StateResponse>>,
+    pub state_request_part: AsyncSender<StateRequestPart, Option<StateResponse>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network_protocol::{RawRoutedMessage, RoutedMessage, RoutedMessageBody};
+    use crate::network_protocol::{
+        RawRoutedMessage, RoutedMessage, T2MessageBody, TieredMessageBody,
+    };
 
     const ALLOWED_SIZE: usize = 1 << 20;
     const NOTIFY_SIZE: usize = 1024;
@@ -479,7 +505,7 @@ mod tests {
     #[test]
     fn test_enum_size() {
         assert_size!(PeerType);
-        assert_size!(RoutedMessageBody);
+        assert_size!(TieredMessageBody);
         assert_size!(KnownPeerStatus);
         assert_size!(ReasonForBan);
     }
@@ -499,17 +525,19 @@ mod tests {
     #[test]
     fn routed_message_body_compatibility_smoke_test() {
         #[track_caller]
-        fn check(msg: RoutedMessageBody, expected: &[u8]) {
+        fn check(msg: TieredMessageBody, expected: &[u8]) {
             let actual = borsh::to_vec(&msg).unwrap();
             assert_eq!(actual.as_slice(), expected);
         }
 
+        let msg: TieredMessageBody =
+            T2MessageBody::TxStatusRequest("test_x".parse().unwrap(), CryptoHash([42; 32])).into();
         check(
-            RoutedMessageBody::TxStatusRequest("test_x".parse().unwrap(), CryptoHash([42; 32])),
+            msg,
             &[
-                2, 6, 0, 0, 0, 116, 101, 115, 116, 95, 120, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42,
+                1, 1, 6, 0, 0, 0, 116, 101, 115, 116, 95, 120, 42, 42, 42, 42, 42, 42, 42, 42, 42,
                 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42,
-                42,
+                42, 42,
             ],
         );
     }
@@ -547,6 +575,7 @@ pub struct Tier3Request {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, strum::IntoStaticStr)]
 pub enum Tier3RequestBody {
+    StateHeader(StateHeaderRequestBody),
     StatePart(StatePartRequestBody),
 }
 
@@ -555,4 +584,10 @@ pub struct StatePartRequestBody {
     pub shard_id: ShardId,
     pub sync_hash: CryptoHash,
     pub part_id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StateHeaderRequestBody {
+    pub shard_id: ShardId,
+    pub sync_hash: CryptoHash,
 }

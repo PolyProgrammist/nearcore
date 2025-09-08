@@ -32,15 +32,6 @@ pub(crate) static CONFIG_CORRECT: LazyLock<IntGauge> = LazyLock::new(|| {
     .unwrap()
 });
 
-pub(crate) static COLD_STORE_COPY_RESULT: LazyLock<IntCounterVec> = LazyLock::new(|| {
-    try_create_int_counter_vec(
-        "near_cold_store_copy_result",
-        "The result of a cold store copy iteration in the cold store loop.",
-        &["copy_result"],
-    )
-    .unwrap()
-});
-
 pub(crate) static STATE_SYNC_DUMP_ITERATION_ELAPSED: LazyLock<HistogramVec> = LazyLock::new(|| {
     try_create_histogram_vec(
         "near_state_sync_dump_iteration_elapsed_sec",
@@ -122,7 +113,7 @@ fn export_postponed_receipt_count(
     let block = chain_store.get_block(&head.last_block_hash)?;
     let shard_layout = epoch_manager.get_shard_layout(block.header().epoch_id())?;
 
-    for chunk_header in block.chunks().iter_deprecated() {
+    for chunk_header in block.chunks().iter() {
         let shard_id = chunk_header.shard_id();
         if chunk_header.height_included() != block.header().height() {
             tracing::trace!(target: "metrics", "trie-stats - chunk for shard {shard_id} is missing, skipping it.");

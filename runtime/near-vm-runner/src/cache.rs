@@ -1,5 +1,5 @@
 // cspell:ignore NOENT, RDONLY, RGRP, RUSR, TRUNC, WGRP, WRONLY, WUSR
-// cspell:ignore mikan, fstat, openat, renameat
+// cspell:ignore mikan, fstat, openat, renameat, unlinkat
 
 use crate::ContractCode;
 use crate::errors::ContractPrecompilatonResult;
@@ -10,12 +10,13 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use near_parameters::vm::VMKind;
 use near_primitives_core::hash::CryptoHash;
 use near_schema_checker_lib::ProtocolSchema;
+use parking_lot::Mutex;
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[cfg(not(windows))]
 use rand::Rng as _;
@@ -44,8 +45,10 @@ fn vm_hash(vm_kind: VMKind) -> u64 {
         VMKind::Wasmtime => panic!("Wasmtime is not enabled"),
         #[cfg(all(feature = "near_vm", target_arch = "x86_64"))]
         VMKind::NearVm => crate::near_vm_runner::near_vm_vm_hash(),
+        #[cfg(all(feature = "near_vm", target_arch = "x86_64"))]
+        VMKind::NearVm2 => crate::near_vm_2_runner::near_vm_vm_hash(),
         #[cfg(not(all(feature = "near_vm", target_arch = "x86_64")))]
-        VMKind::NearVm => panic!("NearVM is not enabled"),
+        VMKind::NearVm | VMKind::NearVm2 => panic!("NearVM is not enabled"),
 
         VMKind::Wasmer0 | VMKind::Wasmer2 => unreachable!(),
     }
@@ -63,9 +66,11 @@ pub fn get_contract_cache_key(code_hash: CryptoHash, config: &Config) -> CryptoH
 }
 
 #[derive(Debug, Clone, PartialEq, BorshDeserialize, BorshSerialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum CompiledContract {
-    CompileModuleError(crate::logic::errors::CompilationError),
-    Code(Vec<u8>),
+    CompileModuleError(crate::logic::errors::CompilationError) = 0,
+    Code(Vec<u8>) = 1,
 }
 
 impl CompiledContract {
@@ -179,18 +184,18 @@ pub struct MockContractRuntimeCache {
 
 impl MockContractRuntimeCache {
     pub fn len(&self) -> usize {
-        self.store.lock().unwrap().len()
+        self.store.lock().len()
     }
 }
 
 impl ContractRuntimeCache for MockContractRuntimeCache {
     fn put(&self, key: &CryptoHash, value: CompiledContractInfo) -> std::io::Result<()> {
-        self.store.lock().unwrap().insert(*key, value);
+        self.store.lock().insert(*key, value);
         Ok(())
     }
 
     fn get(&self, key: &CryptoHash) -> std::io::Result<Option<CompiledContractInfo>> {
-        Ok(self.store.lock().unwrap().get(key).map(Clone::clone))
+        Ok(self.store.lock().get(key).map(Clone::clone))
     }
 
     fn handle(&self) -> Box<dyn ContractRuntimeCache> {
@@ -200,7 +205,7 @@ impl ContractRuntimeCache for MockContractRuntimeCache {
 
 impl fmt::Debug for MockContractRuntimeCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let guard = self.store.lock().unwrap();
+        let guard = self.store.lock();
         let hm: &HashMap<_, _> = &*guard;
         fmt::Debug::fmt(hm, f)
     }
@@ -232,11 +237,16 @@ struct FilesystemContractRuntimeCacheState {
 
 #[cfg(not(windows))]
 impl FilesystemContractRuntimeCache {
-    pub fn new<SP: AsRef<std::path::Path> + ?Sized>(
+    pub fn new<StorePath, ContractCachePath>(
         home_dir: &std::path::Path,
-        store_path: Option<&SP>,
-    ) -> std::io::Result<Self> {
-        Self::with_memory_cache(home_dir, store_path, 0)
+        store_path: Option<&StorePath>,
+        contract_cache_path: &ContractCachePath,
+    ) -> std::io::Result<Self>
+    where
+        StorePath: AsRef<std::path::Path> + ?Sized,
+        ContractCachePath: AsRef<std::path::Path> + ?Sized,
+    {
+        Self::with_memory_cache(home_dir, store_path, contract_cache_path, 0)
     }
 
     /// When setting up a cache of compiled contracts, also set-up a `size` element in-memory
@@ -247,14 +257,33 @@ impl FilesystemContractRuntimeCache {
     ///
     /// Note though, that this memory cache is *not* used to additionally cache files from the
     /// filesystem – OS page cache already does that for us transparently.
-    pub fn with_memory_cache<SP: AsRef<std::path::Path> + ?Sized>(
+    pub fn with_memory_cache<StorePath, ContractCachePath>(
         home_dir: &std::path::Path,
-        store_path: Option<&SP>,
+        store_path: Option<&StorePath>,
+        contract_cache_path: &ContractCachePath,
         memory_cache_size: usize,
-    ) -> std::io::Result<Self> {
+    ) -> std::io::Result<Self>
+    where
+        StorePath: AsRef<std::path::Path> + ?Sized,
+        ContractCachePath: AsRef<std::path::Path> + ?Sized,
+    {
         let store_path = store_path.map(AsRef::as_ref).unwrap_or_else(|| "data".as_ref());
-        let path: std::path::PathBuf =
+        let legacy_path: std::path::PathBuf =
             [home_dir, store_path, "contracts".as_ref()].into_iter().collect();
+        let path: std::path::PathBuf =
+            [home_dir, contract_cache_path.as_ref()].into_iter().collect();
+        // Rename the old contracts directory to a new name. This should only succeed the first
+        // time this code encounters the legacy contract directory. If this fails the first time
+        // for some reason, a new directory will be created for the new cache anyway, and future
+        // launches won't be able to overwrite it anymore. This is also fine.
+        let _ = std::fs::rename(&legacy_path, &path);
+        if std::fs::exists(legacy_path).ok() == Some(true) {
+            tracing::warn!(
+                target: "vm",
+                path = %path.display(),
+                message = "the legacy compiled contract cache path still exists after migration; consider removing it"
+            );
+        }
         std::fs::create_dir_all(&path)?;
         let dir =
             rustix::fs::open(&path, rustix::fs::OFlags::DIRECTORY, rustix::fs::Mode::empty())?;
@@ -274,7 +303,7 @@ impl FilesystemContractRuntimeCache {
 
     pub fn test() -> std::io::Result<Self> {
         let tempdir = tempfile::TempDir::new()?;
-        let mut cache = Self::new(tempdir.path(), None::<&str>)?;
+        let mut cache = Self::new(tempdir.path(), None::<&str>, "contract.cache")?;
         Arc::get_mut(&mut cache.state).unwrap().test_temp_dir = Some(tempdir);
         Ok(cache)
     }
@@ -423,27 +452,30 @@ impl ContractRuntimeCache for FilesystemContractRuntimeCache {
     /// The cache must be created using `test` method, otherwise this method will panic.
     #[cfg(feature = "test_features")]
     fn test_only_clear(&self) -> std::io::Result<()> {
-        let Some(temp_dir) = &self.state.test_temp_dir else {
+        use rustix::fs::AtFlags;
+        let Some(_temp_dir) = &self.state.test_temp_dir else {
             panic!("must be called for testing only");
         };
         self.memory_cache().clear();
-        let dir_path: std::path::PathBuf =
-            [temp_dir.path(), "data".as_ref(), "contracts".as_ref()].into_iter().collect();
-        for entry in std::fs::read_dir(dir_path).unwrap() {
+        for entry in rustix::fs::Dir::read_from(&self.state.dir).unwrap() {
             if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() {
+                let filename_bytes = entry.file_name().to_bytes();
+                if filename_bytes == b"." || filename_bytes == b".." {
+                    continue;
+                } else if !entry.file_type().is_file() {
                     debug_assert!(
                         false,
-                        "Contract code cache directory should only contain files but found directory: {}",
-                        path.display()
+                        "contract code cache should only contain file items, but found {:?}",
+                        entry.file_name()
                     );
                 } else {
-                    if let Err(err) = std::fs::remove_file(&path) {
+                    if let Err(err) =
+                        rustix::fs::unlinkat(&self.state.dir, entry.file_name(), AtFlags::empty())
+                    {
                         tracing::error!(
-                            "Failed to remove contract cache file {}: {}",
-                            path.display(),
-                            err
+                            file_name = ?entry.file_name(),
+                            err = &err as &dyn std::error::Error,
+                            "Failed to remove contract cache file",
                         );
                     }
                 }
@@ -475,7 +507,7 @@ impl AnyCache {
 
     pub fn clear(&self) {
         if let Some(cache) = &self.cache {
-            cache.lock().unwrap().clear();
+            cache.lock().clear();
         }
     }
 
@@ -535,7 +567,7 @@ impl AnyCache {
             return Ok(with(&*v));
         };
         {
-            let mut guard = cache.lock().unwrap();
+            let mut guard = cache.lock();
             if let Some(cached_value) = guard.get(&key) {
                 // Same here.
                 return Ok(with(&**cached_value));
@@ -544,7 +576,7 @@ impl AnyCache {
         let generated = generate()?;
         let result = with(&*generated);
         {
-            let mut guard = cache.lock().unwrap();
+            let mut guard = cache.lock();
             guard.put(key, generated);
         }
         Ok(result)
@@ -553,7 +585,7 @@ impl AnyCache {
     /// Checks if the cache contains the key without modifying the cache.
     pub fn contains(&self, key: CryptoHash) -> bool {
         let Some(cache) = &self.cache else { return false };
-        let guard = cache.lock().unwrap();
+        let guard = cache.lock();
         guard.contains(&key)
     }
 }

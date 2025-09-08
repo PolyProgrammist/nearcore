@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use actix::{Actor, System};
+use actix::Actor;
 
 use futures::{FutureExt, TryFutureExt, future};
 
@@ -11,7 +11,6 @@ use near_client::GetBlock;
 use near_crypto::InMemorySigner;
 use near_jsonrpc::client::new_client;
 use near_network::test_utils::WaitOrTimeoutActor;
-use near_o11y::WithSpanContextExt;
 use near_o11y::testonly::init_integration_logger;
 use near_primitives::hash::CryptoHash;
 use near_primitives::serialize::to_base64;
@@ -21,7 +20,7 @@ use near_primitives::types::BlockId;
 // Queries json-rpc block that doesn't exists
 // Checks if the struct is expected and contains the proper data
 #[test]
-fn ultra_slow_test_block_unknown_block_error() {
+fn slow_test_block_unknown_block_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -40,7 +39,7 @@ fn ultra_slow_test_block_unknown_block_error() {
 
                 // We are sending this tx unstop, just to get over the warm up period.
                 // Probably make sense to stop after 1 time though.
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 1 {
@@ -58,7 +57,7 @@ fn ultra_slow_test_block_unknown_block_error() {
                                             error_json["cause"]["name"],
                                             serde_json::json!("UNKNOWN_BLOCK")
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The block mustn't be found"))
                                     .map(drop),
@@ -80,7 +79,7 @@ fn ultra_slow_test_block_unknown_block_error() {
 // (random-ish chunk hash, we hope it won't happen in test case)
 // Checks if the struct is expected and contains the proper data
 #[test]
-fn ultra_slow_test_chunk_unknown_chunk_error() {
+fn slow_test_chunk_unknown_chunk_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -99,7 +98,7 @@ fn ultra_slow_test_chunk_unknown_chunk_error() {
 
                 // We are sending this tx unstop, just to get over the warm up period.
                 // Probably make sense to stop after 1 time though.
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 1 {
@@ -128,7 +127,7 @@ fn ultra_slow_test_chunk_unknown_chunk_error() {
                                                 "3tMcx4KU2KvkwJPMWPXqK2MUU1FDVbigPFNiAeuVa7Tu"
                                             )
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The chunk mustn't be found"))
                                     .map(drop),
@@ -149,7 +148,7 @@ fn ultra_slow_test_chunk_unknown_chunk_error() {
 // Queries json-rpc EXPERIMENTAL_protocol_config that doesn't exists
 // Checks if the struct is expected and contains the proper data
 #[test]
-fn ultra_slow_test_protocol_config_unknown_block_error() {
+fn slow_test_protocol_config_unknown_block_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -168,7 +167,7 @@ fn ultra_slow_test_protocol_config_unknown_block_error() {
 
                 // We are sending this tx unstop, just to get over the warm up period.
                 // Probably make sense to stop after 1 time though.
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 1 {
@@ -191,7 +190,7 @@ fn ultra_slow_test_protocol_config_unknown_block_error() {
                                             error_json["cause"]["name"],
                                             serde_json::json!("UNKNOWN_BLOCK")
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The block mustn't be found"))
                                     .map(drop),
@@ -212,7 +211,7 @@ fn ultra_slow_test_protocol_config_unknown_block_error() {
 // Queries json-rpc gas_price that doesn't exists
 // Checks if the struct is expected and contains the proper data
 #[test]
-fn ultra_slow_test_gas_price_unknown_block_error() {
+fn slow_test_gas_price_unknown_block_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -231,7 +230,7 @@ fn ultra_slow_test_gas_price_unknown_block_error() {
 
                 // We are sending this tx unstop, just to get over the warm up period.
                 // Probably make sense to stop after 1 time though.
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 1 {
@@ -250,7 +249,7 @@ fn ultra_slow_test_gas_price_unknown_block_error() {
                                             error_json["cause"]["name"],
                                             serde_json::json!("UNKNOWN_BLOCK")
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The block mustn't be found"))
                                     .map(drop),
@@ -271,7 +270,7 @@ fn ultra_slow_test_gas_price_unknown_block_error() {
 // Queries json-rpc EXPERIMENTAL_receipt that doesn't exists
 // Checks if the struct is expected and contains the proper data
 #[test]
-fn ultra_slow_test_receipt_id_unknown_receipt_error() {
+fn slow_test_receipt_id_unknown_receipt_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -290,7 +289,7 @@ fn ultra_slow_test_receipt_id_unknown_receipt_error() {
 
                 // We are sending this tx unstop, just to get over the warm up period.
                 // Probably make sense to stop after 1 time though.
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 1 {
@@ -321,7 +320,7 @@ fn ultra_slow_test_receipt_id_unknown_receipt_error() {
                                                 "3tMcx4KU2KvkwJPMWPXqK2MUU1FDVbigPFNiAeuVa7Tu"
                                             )
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The block mustn't be found"))
                                     .map(drop),
@@ -344,7 +343,7 @@ fn ultra_slow_test_receipt_id_unknown_receipt_error() {
 /// Checks if the struct is expected and contains the proper data
 #[test]
 #[ignore = "Invalid test setup. broadcast_tx_commit times out because we haven't implemented forwarding logic. Fix and reenable."]
-fn ultra_slow_test_tx_invalid_tx_error() {
+fn test_tx_invalid_tx_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -374,7 +373,7 @@ fn ultra_slow_test_tx_invalid_tx_error() {
                 let transaction_copy = transaction.clone();
                 let tx_hash = transaction_copy.get_hash();
 
-                let actor = view_client.send(GetBlock::latest().with_span_context());
+                let actor = view_client.send(GetBlock::latest());
                 let actor = actor.then(move |res| {
                     if let Ok(Ok(block)) = res {
                         if block.header.height > 10 {
@@ -398,7 +397,7 @@ fn ultra_slow_test_tx_invalid_tx_error() {
                                             error_json["cause"]["info"]["transaction_hash"],
                                             serde_json::json!(tx_hash)
                                         );
-                                        System::current().stop();
+                                        near_async::shutdown_all_actors();
                                     })
                                     .map_ok(|_| panic!("The transaction mustn't succeed"))
                                     .map(drop),
@@ -417,7 +416,7 @@ fn ultra_slow_test_tx_invalid_tx_error() {
 }
 
 #[test]
-fn ultra_slow_test_query_rpc_account_view_unknown_block_must_return_error() {
+fn test_query_rpc_account_view_unknown_block_must_return_error() {
     init_integration_logger();
 
     let cluster = NodeCluster::default()
@@ -446,6 +445,6 @@ fn ultra_slow_test_query_rpc_account_view_unknown_block_must_return_error() {
         };
 
         assert_eq!(error["cause"]["name"], serde_json::json!("UNKNOWN_BLOCK"),);
-        System::current().stop();
+        near_async::shutdown_all_actors();
     });
 }

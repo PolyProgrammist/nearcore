@@ -5,7 +5,7 @@ use near_crypto::PublicKey;
 use near_primitives::account::AccountContract;
 use near_primitives::shard_layout::ShardLayout;
 use near_primitives::state_record::StateRecord;
-use near_primitives::types::{AccountId, AccountInfo};
+use near_primitives::types::{AccountId, AccountInfo, Gas};
 use near_primitives::utils;
 use near_primitives::version::ProtocolVersion;
 use near_primitives_core::account::{AccessKey, Account};
@@ -122,7 +122,7 @@ impl AccountRecords {
                 }
                 *total_supply += account.amount() + account.locked();
                 seq.serialize_element(&StateRecord::Account { account_id, account })?;
-                for record in self.extra_records.iter() {
+                for record in &self.extra_records {
                     seq.serialize_element(record)?;
                 }
             }
@@ -142,7 +142,7 @@ fn validator_records(
     num_bytes_account: u64,
 ) -> anyhow::Result<HashMap<AccountId, AccountRecords>> {
     let mut records = HashMap::new();
-    for AccountInfo { account_id, public_key, amount } in validators.iter() {
+    for AccountInfo { account_id, public_key, amount } in validators {
         let mut r = AccountRecords::new_validator(*amount, num_bytes_account);
         r.keys.insert(public_key.clone(), AccessKey::full_access());
         if records.insert(account_id.clone(), r).is_some() {
@@ -392,7 +392,7 @@ pub fn amend_genesis(
         genesis.config.chunk_validator_only_kickout_threshold = t;
     }
     if let Some(l) = genesis_changes.gas_limit {
-        genesis.config.gas_limit = l;
+        genesis.config.gas_limit = Gas::from_gas(l);
     }
     if let Some(p) = genesis_changes.min_gas_price {
         genesis.config.min_gas_price = p;
@@ -1044,7 +1044,7 @@ mod test {
 
     #[test]
     fn test_amend_genesis() {
-        for t in TEST_CASES.iter() {
+        for t in TEST_CASES {
             t.run().unwrap();
         }
     }

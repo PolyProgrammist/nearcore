@@ -1,19 +1,20 @@
 use actix::{Actor, Addr};
 use anyhow::{Context, anyhow, bail};
-use near_async::actix::AddrWithAutoSpanContextExt;
-use near_async::actix_wrapper::{ActixWrapper, spawn_actix_actor};
-use near_async::futures::ActixFutureSpawner;
+use near_async::ActorSystem;
+use near_async::actix::futures::ActixFutureSpawner;
+use near_async::actix::wrapper::ActixWrapper;
 use near_async::messaging::{IntoMultiSender, IntoSender, LateBoundSender, noop};
 use near_async::time::{self, Clock};
 use near_chain::rayon_spawner::RayonAsyncComputationSpawner;
 use near_chain::types::RuntimeAdapter;
-use near_chain::{Chain, ChainGenesis};
+use near_chain::{Chain, ChainGenesis, ChainStore};
 use near_chain_configs::{ClientConfig, Genesis, GenesisConfig, MutableConfigValue};
 use near_chunks::shards_manager_actor::start_shards_manager;
+use near_client::ChunkValidationActorInner;
 use near_client::adapter::client_sender_for_network;
 use near_client::{
-    PartialWitnessActor, StartClientResult, TxRequestHandlerConfig, ViewClientActorInner,
-    spawn_tx_request_handler_actor, start_client,
+    PartialWitnessActor, RpcHandlerConfig, StartClientResult, StateRequestActor,
+    ViewClientActorInner, spawn_rpc_handler_actor, start_client,
 };
 use near_epoch_manager::EpochManager;
 use near_epoch_manager::shard_tracker::ShardTracker;
@@ -26,7 +27,6 @@ use near_network::test_utils::{GetInfo, expected_routing_tables, peer_id_from_se
 use near_network::types::{
     PeerInfo, PeerManagerMessageRequest, PeerManagerMessageResponse, ROUTED_MESSAGE_TTL,
 };
-use near_o11y::WithSpanContextExt;
 use near_o11y::testonly::init_test_logger;
 use near_primitives::genesis::GenesisId;
 use near_primitives::network::PeerId;
@@ -96,11 +96,13 @@ fn setup_network_node(
         chain_id: client_config.chain_id.clone(),
         hash: *genesis_block.header().hash(),
     };
+    let actor_system = ActorSystem::new();
     let network_adapter = LateBoundSender::new();
     let shards_manager_adapter = LateBoundSender::new();
     let adv = near_client::adversarial::Controls::default();
-    let StartClientResult { client_actor, tx_pool, .. } = start_client(
+    let StartClientResult { client_actor, tx_pool, chunk_endorsement_tracker, .. } = start_client(
         Clock::real(),
+        actor_system.clone(),
         client_config.clone(),
         chain_genesis.clone(),
         epoch_manager.clone(),
@@ -111,7 +113,7 @@ fn setup_network_node(
         network_adapter.as_multi_sender(),
         shards_manager_adapter.as_sender(),
         validator_signer.clone(),
-        telemetry_actor.with_auto_span_context().into_sender(),
+        telemetry_actor.into_sender(),
         None,
         None,
         adv.clone(),
@@ -123,7 +125,6 @@ fn setup_network_node(
     );
     let view_client_addr = ViewClientActorInner::spawn_actix_actor(
         Clock::real(),
-        validator_signer.clone(),
         chain_genesis,
         epoch_manager.clone(),
         shard_tracker.clone(),
@@ -131,55 +132,84 @@ fn setup_network_node(
         network_adapter.as_multi_sender(),
         client_config.clone(),
         adv,
+        validator_signer.clone(),
     );
-    let tx_processor_config = TxRequestHandlerConfig {
+    let state_request_addr = actor_system.spawn_tokio_actor(StateRequestActor::new(
+        Clock::real(),
+        runtime.clone(),
+        epoch_manager.clone(),
+        genesis_id.hash,
+        client_config.state_request_throttle_period,
+        client_config.state_requests_per_throttle_period,
+    ));
+    let rpc_handler_config = RpcHandlerConfig {
         handler_threads: client_config.transaction_request_handler_threads,
         tx_routing_height_horizon: client_config.tx_routing_height_horizon,
         epoch_length: client_config.epoch_length,
         transaction_validity_period: genesis.config.transaction_validity_period,
     };
-    let tx_processor = spawn_tx_request_handler_actor(
-        tx_processor_config,
+    let rpc_handler = spawn_rpc_handler_actor(
+        rpc_handler_config,
         tx_pool,
+        chunk_endorsement_tracker,
         epoch_manager.clone(),
         shard_tracker.clone(),
         validator_signer.clone(),
         runtime.clone(),
         network_adapter.as_multi_sender(),
     );
-    let (shards_manager_actor, _) = start_shards_manager(
+    let shards_manager_actor = start_shards_manager(
+        actor_system.clone(),
         epoch_manager.clone(),
         epoch_manager.clone(),
         shard_tracker,
         network_adapter.as_sender(),
-        client_actor.clone().with_auto_span_context().into_sender(),
+        client_actor.clone().into_sender(),
         validator_signer.clone(),
         runtime.store().clone(),
         client_config.chunk_request_retry_period,
     );
-    let (partial_witness_actor, _) = spawn_actix_actor(PartialWitnessActor::new(
+    let chain_store =
+        ChainStore::new(runtime.store().clone(), false, genesis.config.genesis_height);
+    let chunk_validation_actor = ChunkValidationActorInner::spawn_actix_actors(
+        chain_store,
+        Arc::new(genesis_block),
+        epoch_manager.clone(),
+        runtime.clone(),
+        network_adapter.as_sender(),
+        validator_signer.clone(),
+        false,
+        false,
+        Arc::new(RayonAsyncComputationSpawner),
+        near_chain_configs::default_orphan_state_witness_pool_size(),
+        near_chain_configs::default_orphan_state_witness_max_size().as_u64(),
+        1,
+    );
+    let partial_witness_actor = actor_system.spawn_tokio_actor(PartialWitnessActor::new(
         Clock::real(),
         network_adapter.as_multi_sender(),
-        client_actor.clone().with_auto_span_context().into_multi_sender(),
+        chunk_validation_actor.into_multi_sender(),
         validator_signer,
         epoch_manager,
         runtime,
         Arc::new(RayonAsyncComputationSpawner),
         Arc::new(RayonAsyncComputationSpawner),
+        Arc::new(RayonAsyncComputationSpawner),
     ));
-    shards_manager_adapter.bind(shards_manager_actor.with_auto_span_context());
+    shards_manager_adapter.bind(shards_manager_actor);
     let peer_manager = PeerManagerActor::spawn(
         time::Clock::real(),
         db.clone(),
         config,
-        client_sender_for_network(client_actor, view_client_addr, tx_processor),
+        client_sender_for_network(client_actor, view_client_addr, rpc_handler),
+        state_request_addr.into_multi_sender(),
         network_adapter.as_multi_sender(),
         shards_manager_adapter.as_sender(),
-        partial_witness_actor.with_auto_span_context().into_multi_sender(),
+        partial_witness_actor.into_multi_sender(),
         genesis_id,
     )
     .unwrap();
-    network_adapter.bind(peer_manager.clone().with_auto_span_context());
+    network_adapter.bind(peer_manager.clone());
     peer_manager
 }
 
@@ -217,7 +247,7 @@ async fn check_routing_table(
         })
         .collect();
     let pm = info.get_node(u)?.actix.addr.clone();
-    let resp = pm.send(PeerManagerMessageRequest::FetchRoutingTable.with_span_context()).await?;
+    let resp = pm.send(PeerManagerMessageRequest::FetchRoutingTable).await?;
     let rt = match resp {
         PeerManagerMessageResponse::FetchRoutingTable(rt) => rt,
         _ => bail!("bad response"),
@@ -247,14 +277,14 @@ impl StateMachine {
                     let pm = info.get_node(from)?.actix.addr.clone();
                     let peer_info = info.runner.test_config[to].peer_info();
                     match tcp::Stream::connect(&peer_info, tcp::Tier::T2, &config::SocketOptions::default()).await {
-                        Ok(stream) => { pm.send(PeerManagerMessageRequest::OutboundTcpConnect(stream).with_span_context()).await?; },
+                        Ok(stream) => { pm.send(PeerManagerMessageRequest::OutboundTcpConnect(stream)).await?; },
                         Err(err) => tracing::debug!("tcp::Stream::connect({peer_info}): {err}"),
                     }
                     if !force {
                         return Ok(ControlFlow::Break(()))
                     }
                     let peer_id = peer_info.id.clone();
-                    let res = pm.send(GetInfo{}.with_span_context()).await?;
+                    let res = pm.send(GetInfo{}).await?;
                     for peer in &res.connected_peers {
                         if peer.full_peer_info.peer_info.id==peer_id {
                             return Ok(ControlFlow::Break(()))
@@ -428,7 +458,7 @@ impl Runner {
     where
         F: FnMut(&mut TestConfig) -> (),
     {
-        for test_config in self.test_config.iter_mut() {
+        for test_config in &mut self.test_config {
             apply(test_config);
         }
     }
@@ -554,7 +584,7 @@ pub(crate) fn assert_expected_peers(node_id: usize, peers: Vec<usize>) -> Action
         let peers = peers.clone();
         Box::pin(async move {
             let pm = &info.get_node(node_id)?.actix.addr;
-            let network_info = pm.send(GetInfo {}.with_span_context()).await?;
+            let network_info = pm.send(GetInfo {}).await?;
             let got: HashSet<_> = network_info
                 .connected_peers
                 .into_iter()
@@ -582,7 +612,7 @@ pub(crate) fn check_expected_connections(
         Box::pin(async move {
             debug!(target: "test", node_id, expected_connections_lo, ?expected_connections_hi, "runner.rs: check_expected_connections");
             let pm = &info.get_node(node_id)?.actix.addr;
-            let res = pm.send(GetInfo {}.with_span_context()).await?;
+            let res = pm.send(GetInfo {}).await?;
             if expected_connections_lo.is_some_and(|l| l > res.num_connected_peers) {
                 return Ok(ControlFlow::Continue(()));
             }

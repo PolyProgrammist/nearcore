@@ -4,6 +4,7 @@ use super::test_vm_config;
 #[cfg(feature = "prepare")]
 use crate::tests::with_vm_variants;
 use expect_test::expect;
+use near_primitives_core::version::ProtocolFeature;
 
 static SIMD: &str = r#"
 (module
@@ -103,8 +104,8 @@ static EXPECTED_UNSUPPORTED: &[(&str, &str)] = &[
 #[test]
 #[cfg(feature = "prepare")]
 fn ensure_fails_verification() {
-    let config = test_vm_config();
-    with_vm_variants(&config, |kind| {
+    with_vm_variants(|kind| {
+        let config = test_vm_config(Some(kind));
         for (feature_name, wat) in EXPECTED_UNSUPPORTED {
             let wasm = wat::parse_str(wat).expect("parsing test wat should succeed");
             if let Ok(_) = crate::prepare::prepare_contract(&wasm, &config, kind) {
@@ -121,4 +122,145 @@ fn ensure_fails_execution() {
             Err: ...
         "#]]);
     }
+}
+
+#[test]
+fn extension_saturating_float_to_int() {
+    #[allow(deprecated)]
+    test_builder()
+        .wat(
+            r#"
+            (module
+                (func $test_trunc (param $x f64) (result i32) (i32.trunc_sat_f64_s (local.get $x)))
+            )
+            "#,
+        )
+        .protocol_features(&[
+            ProtocolFeature::SaturatingFloatToInt,
+            ProtocolFeature::FixContractLoadingCost,
+        ])
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 0 used gas 0
+                Err: PrepareError: Error happened while deserializing the module.
+            "#]],
+            expect![[r#"
+                VMOutcome: balance 0 storage_usage 0 return data None burnt gas 0 used gas 0
+                Err: MethodNotFound
+            "#]],
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 100803663 used gas 100803663
+                Err: MethodNotFound
+            "#]],
+        ]);
+}
+
+#[test]
+fn memory_export_method() {
+    test_builder()
+        .wat(
+            r#"
+            (module
+              (func (export "memory"))
+            )"#,
+        )
+        .method("memory")
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 81242631 used gas 81242631
+            "#]],
+        ]);
+}
+
+#[test]
+fn memory_export_clash() {
+    test_builder()
+        .wat(
+            r#"
+            (module
+              (func (export "\00nearcore_memory"))
+              (func (export "main"))
+            )"#,
+        )
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 97535778 used gas 97535778
+                Err: PrepareError: Error happened during instantiation.
+            "#]],
+        ]);
+}
+
+#[test]
+fn memory_export_internal() {
+    test_builder()
+        .wat(
+            r#"
+            (module
+              (memory (export "\00nearcore_memory") 0 0)
+              (func (export "main"))
+            )"#,
+        )
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 106296416 used gas 106296416
+            "#]],
+        ]);
+}
+
+#[test]
+fn memory_custom() {
+    test_builder()
+        .wat(
+            r#"
+            (module
+              (memory (export "foo") 42 42)
+              (func (export "main"))
+            )"#,
+        )
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 92135581 used gas 92135581
+            "#]],
+        ]);
+}
+
+#[test]
+fn too_many_table_elements() {
+    test_builder()
+        .wat(
+            &format!(r#"
+            (module
+              (func (export "main"))
+              (table 1000001 funcref)
+            )"#),
+        )
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 81196353 used gas 81196353
+                Err: PrepareError: Too many table elements declared in the contract.
+            "#]],
+        ]);
+}
+
+#[test]
+fn too_many_tables() {
+    test_builder()
+        .wat(
+            &format!(r#"
+            (module
+              (func (export "main"))
+              (table 0 funcref)
+              (table 0 funcref)
+              (table 0 funcref)
+              (table 0 funcref)
+              (table 0 funcref)
+              (table 0 funcref)
+            )"#),
+        )
+        .expects(&[
+            expect![[r#"
+                VMOutcome: balance 4 storage_usage 12 return data None burnt gas 95357188 used gas 95357188
+                Err: PrepareError: Too many tables declared in the contract.
+            "#]],
+        ]);
 }

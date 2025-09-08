@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::Poll;
 
 use assert_matches::assert_matches;
@@ -13,7 +13,7 @@ use near_async::test_loop::futures::TestLoopFutureSpawner;
 use near_async::test_loop::sender::TestLoopSender;
 use near_async::time::Duration;
 use near_chain::Error;
-use near_client::{Client, ProcessTxResponse, TxRequestHandler};
+use near_client::{Client, ProcessTxResponse, RpcHandler};
 use near_crypto::Signer;
 use near_network::client::ProcessTxRequest;
 use near_primitives::action::{GlobalContractDeployMode, GlobalContractIdentifier};
@@ -22,14 +22,14 @@ use near_primitives::errors::InvalidTxError;
 use near_primitives::hash::CryptoHash;
 use near_primitives::test_utils::create_user_test_signer;
 use near_primitives::transaction::SignedTransaction;
-use near_primitives::types::{AccountId, BlockHeight};
+use near_primitives::types::{AccountId, BlockHeight, Gas};
 use near_primitives::views::{
     FinalExecutionOutcomeView, FinalExecutionStatus, QueryRequest, QueryResponseKind,
 };
+use parking_lot::Mutex;
 
 use crate::setup::env::TestLoopEnv;
 use crate::setup::state::NodeExecutionData;
-use crate::utils::TGAS;
 
 use super::client_queries::ClientQueries;
 use super::{ONE_NEAR, get_node_data};
@@ -47,7 +47,7 @@ pub(crate) struct BalanceMismatchError {
 }
 
 // Returns the head with the smallest height
-pub(crate) fn get_smallest_height_head(clients: &[&Client]) -> Tip {
+pub(crate) fn get_smallest_height_head(clients: &[&Client]) -> Arc<Tip> {
     clients
         .iter()
         .map(|client| client.chain.head().unwrap())
@@ -142,7 +142,7 @@ pub(crate) fn execute_money_transfers(
                 );
                 let process_tx_request =
                     ProcessTxRequest { transaction: tx, is_forwarded: false, check_only: false };
-                node_data[i % num_clients].tx_processor_sender.send(process_tx_request);
+                node_data[i % num_clients].rpc_handler_sender.send(process_tx_request);
             },
         );
     }
@@ -230,7 +230,7 @@ pub fn do_call_contract(
 }
 
 pub fn create_account(
-    env: &mut TestLoopEnv,
+    env: &TestLoopEnv,
     rpc_id: &AccountId,
     originator: &AccountId,
     new_account_id: &AccountId,
@@ -289,7 +289,7 @@ pub fn delete_account(
 ///
 /// This function does not wait until the transactions is executed.
 pub fn deploy_contract(
-    test_loop: &mut TestLoopV2,
+    test_loop: &TestLoopV2,
     node_datas: &[NodeExecutionData],
     rpc_id: &AccountId,
     contract_id: &AccountId,
@@ -312,7 +312,7 @@ pub fn deploy_contract(
 ///
 /// This function does not wait until the transactions is executed.
 pub fn deploy_global_contract(
-    test_loop: &mut TestLoopV2,
+    test_loop: &TestLoopV2,
     node_datas: &[NodeExecutionData],
     rpc_id: &AccountId,
     deployer_id: AccountId,
@@ -344,7 +344,7 @@ pub fn deploy_global_contract(
 ///
 /// This function does not wait until the transactions is executed.
 pub fn use_global_contract(
-    test_loop: &mut TestLoopV2,
+    test_loop: &TestLoopV2,
     node_datas: &[NodeExecutionData],
     rpc_id: &AccountId,
     user_id: AccountId,
@@ -373,7 +373,7 @@ pub fn use_global_contract(
 ///
 /// This function does not wait until the transactions is executed.
 pub fn call_contract(
-    test_loop: &mut TestLoopV2,
+    test_loop: &TestLoopV2,
     node_datas: &[NodeExecutionData],
     rpc_id: &AccountId,
     sender_id: &AccountId,
@@ -384,7 +384,7 @@ pub fn call_contract(
 ) -> CryptoHash {
     let block_hash = get_shared_block_hash(node_datas, &test_loop.data);
     let signer = create_user_test_signer(sender_id);
-    let attach_gas = 300 * TGAS;
+    let attach_gas = Gas::from_teragas(300);
     let deposit = 0;
 
     let tx = SignedTransaction::call(
@@ -405,6 +405,25 @@ pub fn call_contract(
     tx_hash
 }
 
+pub fn prepare_transfer_tx(
+    env: &TestLoopEnv,
+    sender_id: &AccountId,
+    receiver_id: &AccountId,
+    amount: u128,
+) -> SignedTransaction {
+    let block_hash = get_shared_block_hash(&env.node_datas, &env.test_loop.data);
+    let nonce = get_next_nonce(&env.test_loop.data, &env.node_datas, sender_id);
+    let signer = create_user_test_signer(sender_id);
+    SignedTransaction::send_money(
+        nonce,
+        sender_id.clone(),
+        receiver_id.clone(),
+        &signer,
+        amount,
+        block_hash,
+    )
+}
+
 /// Submit a transaction to the rpc node with the given account id.
 /// Doesn't wait for the result, it must be requested separately.
 pub fn submit_tx(node_datas: &[NodeExecutionData], rpc_id: &AccountId, tx: SignedTransaction) {
@@ -412,7 +431,7 @@ pub fn submit_tx(node_datas: &[NodeExecutionData], rpc_id: &AccountId, tx: Signe
         ProcessTxRequest { transaction: tx, is_forwarded: false, check_only: false };
 
     let rpc_node_data = get_node_data(node_datas, rpc_id);
-    let rpc_node_data_sender = &rpc_node_data.tx_processor_sender;
+    let rpc_node_data_sender = &rpc_node_data.rpc_handler_sender;
 
     let future = rpc_node_data_sender.send_async(process_tx_request);
     drop(future);
@@ -481,7 +500,14 @@ pub fn run_tx(
     node_datas: &[NodeExecutionData],
     maximum_duration: Duration,
 ) -> Vec<u8> {
-    let tx_res = execute_tx(test_loop, rpc_id, tx, node_datas, maximum_duration).unwrap();
+    let tx_res = execute_tx(
+        test_loop,
+        rpc_id,
+        TransactionRunner::new(tx, true),
+        node_datas,
+        maximum_duration,
+    )
+    .unwrap();
     assert_matches!(tx_res.status, FinalExecutionStatus::SuccessValue(_));
     match tx_res.status {
         FinalExecutionStatus::SuccessValue(res) => res,
@@ -499,14 +525,14 @@ pub fn run_txs_parallel(
 ) {
     let mut tx_runners = txs.into_iter().map(|tx| TransactionRunner::new(tx, true)).collect_vec();
 
-    let tx_processor_sender = &node_datas[0].tx_processor_sender;
+    let tx_processor_sender = &node_datas[0].rpc_handler_sender;
     let future_spawner = test_loop.future_spawner("TransactionRunner");
 
     test_loop.run_until(
         |tl_data| {
             let client = &tl_data.get(&node_datas[0].client_sender.actor_handle()).client;
             let mut all_ready = true;
-            for runner in tx_runners.iter_mut() {
+            for runner in &mut tx_runners {
                 match runner.poll_assert_success(tx_processor_sender, client, &future_spawner) {
                     Poll::Pending => all_ready = false,
                     Poll::Ready(_) => {}
@@ -519,21 +545,19 @@ pub fn run_txs_parallel(
     );
 }
 
-/// Submit a transaction and wait for the execution result.
+/// Submit a transaction inside `tx_runner` and wait for the execution result.
 /// For invalid transactions returns an error.
 /// For valid transactions returns the execution result (which could have an execution error inside, check it!).
 pub fn execute_tx(
     test_loop: &mut TestLoopV2,
     rpc_id: &AccountId,
-    tx: SignedTransaction,
+    mut tx_runner: TransactionRunner,
     node_datas: &[NodeExecutionData],
     maximum_duration: Duration,
 ) -> Result<FinalExecutionOutcomeView, InvalidTxError> {
     let client_sender = &get_node_data(node_datas, rpc_id).client_sender;
-    let tx_processor_sender = &get_node_data(node_datas, rpc_id).tx_processor_sender;
+    let tx_processor_sender = &get_node_data(node_datas, rpc_id).rpc_handler_sender;
     let future_spawner = test_loop.future_spawner("TransactionRunner");
-
-    let mut tx_runner = TransactionRunner::new(tx, true);
 
     let mut res = None;
     test_loop.run_until(
@@ -599,7 +623,7 @@ impl TransactionRunner {
     /// It's meant to be called in `run_until`.
     pub fn poll(
         &mut self,
-        client_sender: &TestLoopSender<TxRequestHandler>,
+        client_sender: &TestLoopSender<RpcHandler>,
         client: &Client,
         future_spawner: &TestLoopFutureSpawner,
     ) -> Poll<Result<FinalExecutionOutcomeView, InvalidTxError>> {
@@ -648,7 +672,7 @@ impl TransactionRunner {
     /// Useful for tests where the transaction is expected to be executed successfully.
     pub fn poll_assert_success(
         &mut self,
-        client_sender: &TestLoopSender<TxRequestHandler>,
+        client_sender: &TestLoopSender<RpcHandler>,
         client: &Client,
         future_spawner: &TestLoopFutureSpawner,
     ) -> Poll<Vec<u8>> {
@@ -667,7 +691,7 @@ impl TransactionRunner {
     /// Send the transaction to the network.
     fn send_tx(
         &mut self,
-        client_sender: &TestLoopSender<TxRequestHandler>,
+        client_sender: &TestLoopSender<RpcHandler>,
         future_spawner: &TestLoopFutureSpawner,
     ) {
         let process_tx_request = ProcessTxRequest {
@@ -681,14 +705,14 @@ impl TransactionRunner {
         let process_tx_result_clone = self.process_tx_result.clone();
         future_spawner.spawn("TransactionRunner::send_tx", async move {
             let process_res = process_tx_future.await;
-            *process_tx_result_clone.lock().unwrap() = Some(process_res);
+            *process_tx_result_clone.lock() = Some(process_res);
         });
         self.tx_sent = true;
     }
 
     /// Get result of initial processing, if the result is already available.
-    fn get_tx_processing_res(&mut self) -> Option<TxProcessingResult> {
-        let processing_response_res = self.process_tx_result.lock().unwrap().take()?;
+    fn get_tx_processing_res(&self) -> Option<TxProcessingResult> {
+        let processing_response_res = self.process_tx_result.lock().take()?;
         let process_tx_response = match processing_response_res {
             Ok(process_tx_response) => process_tx_response,
             Err(AsyncSendError::Closed)

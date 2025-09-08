@@ -1,8 +1,4 @@
-#[macro_use]
-extern crate bencher;
-
-use bencher::{Bencher, black_box};
-
+use bencher::{Bencher, benchmark_group, benchmark_main, black_box};
 use borsh::BorshDeserialize;
 use near_crypto::{KeyType, PublicKey, Signature};
 use near_primitives::account::Account;
@@ -14,7 +10,7 @@ use near_primitives::test_utils::account_new;
 use near_primitives::transaction::{
     Action, SignedTransaction, Transaction, TransactionV0, TransferAction,
 };
-use near_primitives::types::{EpochId, ShardId, StateRoot};
+use near_primitives::types::{EpochId, Gas, ShardId, StateRoot};
 use near_primitives::validator_signer::InMemoryValidatorSigner;
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives_core::types::MerkleHash;
@@ -45,7 +41,7 @@ fn create_block() -> Block {
         vec![StateRoot::new()],
         vec![Default::default(); shard_ids.len()],
         &shard_ids,
-        1_000,
+        Gas::from_gas(1_000),
         0,
         PROTOCOL_VERSION,
     );
@@ -78,6 +74,7 @@ fn create_block() -> Block {
         CryptoHash::default(),
         CryptoHash::default(),
         Clock::real(),
+        None,
         None,
         None,
     )

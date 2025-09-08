@@ -1,11 +1,10 @@
 use crate::opentelemetry::get_opentelemetry_filter;
 use crate::{BuildEnvFilterError, EnvFilterBuilder, OpenTelemetryLevel, log_config, log_counter};
 use opentelemetry_sdk::trace::Tracer;
-use std::str::FromStr as _;
 use std::sync::OnceLock;
 use tracing_appender::non_blocking::NonBlocking;
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::filter::{Filtered, Targets};
+use tracing_subscriber::filter::Filtered;
 use tracing_subscriber::layer::Layered;
 use tracing_subscriber::reload::Handle;
 use tracing_subscriber::{EnvFilter, Registry, fmt, reload};
@@ -14,7 +13,7 @@ static LOG_LAYER_RELOAD_HANDLE: OnceLock<
     Handle<EnvFilter, log_counter::LogCountingLayer<Registry>>,
 > = OnceLock::new();
 static OTLP_LAYER_RELOAD_HANDLE: OnceLock<
-    Handle<Targets, LogLayer<log_counter::LogCountingLayer<Registry>>>,
+    Handle<EnvFilter, LogLayer<log_counter::LogCountingLayer<Registry>>>,
 > = OnceLock::new();
 
 // Records the level of opentelemetry tracing verbosity configured via command-line flags at the startup.
@@ -39,7 +38,7 @@ pub(crate) type SimpleLogLayer<Inner, W> = Layered<
 >;
 
 pub(crate) type TracingLayer<Inner> = Layered<
-    Filtered<OpenTelemetryLayer<Inner, Tracer>, reload::Layer<Targets, Inner>, Inner>,
+    Filtered<OpenTelemetryLayer<Inner, Tracer>, reload::Layer<EnvFilter, Inner>, Inner>,
     Inner,
 >;
 
@@ -52,7 +51,7 @@ pub(crate) fn set_log_layer_handle(
 }
 
 pub(crate) fn set_otlp_layer_handle(
-    handle: Handle<Targets, LogLayer<log_counter::LogCountingLayer<Registry>>>,
+    handle: Handle<EnvFilter, LogLayer<log_counter::LogCountingLayer<Registry>>>,
 ) {
     OTLP_LAYER_RELOAD_HANDLE
         .set(handle)
@@ -87,11 +86,12 @@ pub fn reload_log_config(config: Option<&log_config::LogConfig>) {
             config.rust_log.as_deref(),
             config.verbose_module.as_deref(),
             config.opentelemetry.as_deref(),
+            config.expensive_metrics,
         )
     } else {
         // When the LOG_CONFIG_FILENAME is not available, reset to the tracing and logging config
         // when the node was started.
-        reload(None, None, None)
+        reload(None, None, None, None)
     };
     match result {
         Ok(_) => {
@@ -119,7 +119,10 @@ pub fn reload(
     rust_log: Option<&str>,
     verbose_module: Option<&str>,
     opentelemetry: Option<&str>,
+    expensive_metrics: Option<bool>,
 ) -> Result<(), Vec<ReloadError>> {
+    crate::metrics::config::enable_expensive_metrics(expensive_metrics.unwrap_or_default());
+
     let log_reload_result = LOG_LAYER_RELOAD_HANDLE.get().map_or(
         Err(ReloadError::NoLogReloadHandle),
         |reload_handle| {
@@ -140,7 +143,7 @@ pub fn reload(
     );
 
     let opentelemetry_filter = opentelemetry
-        .map(|f| Targets::from_str(f).map_err(ReloadError::ParseOpentelemetry))
+        .map(|f| EnvFilter::try_new(f).map_err(ReloadError::ParseOpentelemetry))
         .unwrap_or_else(|| {
             Ok(get_opentelemetry_filter(
                 *DEFAULT_OTLP_LEVEL.get().unwrap_or(&OpenTelemetryLevel::OFF),

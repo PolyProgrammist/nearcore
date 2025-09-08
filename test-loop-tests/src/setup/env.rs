@@ -1,13 +1,12 @@
+use super::drop_condition::DropCondition;
+use super::setup::setup_client;
+use super::state::{NodeExecutionData, NodeSetupState, SharedState};
 use near_async::test_loop::TestLoopV2;
 use near_async::test_loop::data::TestLoopData;
 use near_async::time::Duration;
 use near_primitives::types::AccountId;
 use near_store::adapter::StoreAdapter;
 use std::sync::atomic::Ordering;
-
-use super::drop_condition::DropCondition;
-use super::setup::setup_client;
-use super::state::{NodeExecutionData, NodeSetupState, SharedState};
 
 pub struct TestLoopEnv {
     pub test_loop: TestLoopV2,
@@ -24,7 +23,7 @@ impl TestLoopEnv {
     /// While adding a new node to the environment, we can iterate through all the drop_conditions
     /// and register them with the new node's peer_manager_actor.
     pub fn drop(mut self, drop_condition: DropCondition) -> Self {
-        for data in self.node_datas.iter() {
+        for data in &self.node_datas {
             data.register_drop_condition(
                 &mut self.test_loop.data,
                 self.shared_state.chunks_storage.clone(),
@@ -146,5 +145,9 @@ impl TestLoopEnv {
         account_id: &AccountId,
     ) -> Option<&NodeExecutionData> {
         self.node_datas.iter().find(|data| &data.account_id == account_id)
+    }
+
+    pub fn test_loop_data(&self) -> &TestLoopData {
+        &self.test_loop.data
     }
 }

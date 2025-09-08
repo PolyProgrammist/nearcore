@@ -1,22 +1,23 @@
 use crate::config::Mode;
 use crate::db::{DBIterator, DBOp, DBSlice, DBTransaction, Database, StatsValue, refcount};
-use crate::{DBCol, StoreConfig, StoreStatistics, Temperature, metrics};
+use crate::{DBCol, StoreConfig, StoreStatistics, Temperature, deserialized_column, metrics};
 use ::rocksdb::{
     BlockBasedOptions, Cache, ColumnFamily, DB, Env, IteratorMode, Options, ReadOptions, WriteBatch,
 };
 use anyhow::Context;
 use itertools::Itertools;
+use parking_lot::Mutex;
+use std::collections::BTreeMap;
 use std::io;
-use std::ops::Deref;
-use std::path::Path;
-use std::sync::LazyLock;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock};
 use strum::IntoEnumIterator;
 use tracing::warn;
 
 use super::metadata;
 
 mod instance_tracker;
-pub(crate) mod snapshot;
+pub mod snapshot;
 
 /// List of integer RocksDB properties we’re reading when collecting statistics.
 ///
@@ -48,6 +49,7 @@ static CF_PROPERTY_NAMES: LazyLock<Vec<std::ffi::CString>> = LazyLock::new(|| {
 pub struct RocksDB {
     db: DB,
     db_opt: Options,
+    cache: Arc<deserialized_column::Cache>,
 
     /// Map from [`DBCol`] to a column family handler in the RocksDB.
     ///
@@ -117,11 +119,17 @@ impl RocksDB {
         temp: Temperature,
         columns: &[DBCol],
     ) -> io::Result<Self> {
+        static MAP: Mutex<BTreeMap<PathBuf, Arc<deserialized_column::Cache>>> =
+            Mutex::new(BTreeMap::new());
+        let mut guard = MAP.lock();
+        let cache = guard
+            .entry(path.to_path_buf())
+            .or_insert_with(|| Arc::new(deserialized_column::Cache::enabled()));
         let counter = instance_tracker::InstanceTracker::try_new(store_config.max_open_files)
             .map_err(io::Error::other)?;
         let (db, db_opt) = Self::open_db(path, store_config, mode, temp, columns)?;
         let cf_handles = Self::get_cf_handles(&db, columns);
-        Ok(Self { db, db_opt, cf_handles, _instance_tracker: counter })
+        Ok(Self { db, db_opt, cf_handles, _instance_tracker: counter, cache: Arc::clone(cache) })
     }
 
     /// Opens the database with given column families configured.
@@ -492,6 +500,10 @@ impl Database for RocksDB {
         }
         Ok(())
     }
+
+    fn deserialized_column_cache(&self) -> Arc<deserialized_column::Cache> {
+        Arc::clone(&self.cache)
+    }
 }
 
 fn cf_descriptors(
@@ -519,6 +531,10 @@ fn common_rocksdb_options() -> Options {
     opts.set_use_fsync(false);
     opts.set_keep_log_file_num(1);
     opts.set_bytes_per_sync(bytesize::MIB);
+    // Sync WAL roughly every 1 MiB to smooth I/O and reduce latency spikes from large fsync bursts
+    opts.set_wal_bytes_per_sync(bytesize::MIB);
+    // Reduce write stall latency by enabling pipelined write path
+    opts.set_enable_pipelined_write(true);
     opts.set_write_buffer_size(256 * bytesize::MIB as usize);
     opts.set_max_bytes_for_level_base(256 * bytesize::MIB);
 
@@ -532,7 +548,7 @@ fn common_rocksdb_options() -> Options {
         opts.set_level_zero_stop_writes_trigger(100000000);
     } else {
         opts.increase_parallelism(std::cmp::max(1, num_cpus::get() as i32 / 2));
-        opts.set_max_total_wal_size(bytesize::GIB);
+        opts.set_max_total_wal_size(4 * bytesize::GIB);
     }
     opts
 }
@@ -608,13 +624,46 @@ fn rocksdb_column_options(col: DBCol, store_config: &StoreConfig, temp: Temperat
     // the rest use LZ4 compression.
     // See the implementation here:
     //      https://github.com/facebook/rocksdb/blob/c18c4a081c74251798ad2a1abf83bad417518481/options/options.cc#L588.
-    let memtable_memory_budget = 128 * bytesize::MIB as usize;
-    opts.optimize_level_style_compaction(memtable_memory_budget);
+    // Increase memory budget to reduce flush/compaction frequency under heavy write load
+    opts.optimize_level_style_compaction(256 * bytesize::MIB as usize);
+    // Relax L0 triggers so background compaction interferes less with foreground writes
+    opts.set_level_zero_file_num_compaction_trigger(8);
+    opts.set_level_zero_slowdown_writes_trigger(32);
+    opts.set_level_zero_stop_writes_trigger(64);
+    // Allow more memtables in flight to absorb bursts
+    opts.set_max_write_buffer_number(4);
+    // Larger target file size reduces number of files and compactions
+    opts.set_target_file_size_base(96 * bytesize::MIB);
+    // Help compaction read sequentially by adding readahead on the device
+    opts.set_compaction_readahead_size(2 * bytesize::MIB as usize);
 
-    opts.set_target_file_size_base(64 * bytesize::MIB);
     if temp == Temperature::Hot && col.is_rc() {
         opts.set_merge_operator("refcount merge", RocksDB::refcount_merge, RocksDB::refcount_merge);
         opts.set_compaction_filter("empty value filter", RocksDB::empty_value_compaction_filter);
+    }
+
+    // Optimize write-heavy columns to boost compaction throughput
+    match col {
+        DBCol::PartialChunks | DBCol::State | DBCol::TrieChanges => {
+            opts.optimize_level_style_compaction(1024 * bytesize::MIB as usize);
+            opts.set_level_zero_file_num_compaction_trigger(8);
+            opts.set_level_zero_slowdown_writes_trigger(32);
+            opts.set_level_zero_stop_writes_trigger(64);
+            opts.set_max_subcompactions(2);
+            opts.set_target_file_size_base(128 * bytesize::MIB);
+            opts.set_max_write_buffer_number(8);
+            opts.set_compaction_readahead_size(6 * bytesize::MIB as usize);
+        }
+        DBCol::FlatState | DBCol::Chunks | DBCol::StateChanges | DBCol::Transactions => {
+            opts.optimize_level_style_compaction(512 * bytesize::MIB as usize);
+            opts.set_level_zero_file_num_compaction_trigger(8);
+            opts.set_level_zero_slowdown_writes_trigger(32);
+            opts.set_level_zero_stop_writes_trigger(64);
+            opts.set_target_file_size_base(128 * bytesize::MIB);
+            opts.set_max_write_buffer_number(6);
+            opts.set_compaction_readahead_size(4 * bytesize::MIB as usize);
+        }
+        _ => {}
     }
     opts
 }
@@ -666,7 +715,7 @@ impl RocksDB {
 
     /// Gets every int property in CF_PROPERTY_NAMES for every column in DBCol.
     fn get_cf_statistics(&self, result: &mut StoreStatistics) {
-        for prop_name in CF_PROPERTY_NAMES.deref() {
+        for prop_name in &*CF_PROPERTY_NAMES {
             let values = self
                 .cf_handles()
                 .filter_map(|(col, handle)| {
@@ -768,7 +817,7 @@ fn col_name(col: DBCol) -> &'static str {
         DBCol::ChallengedBlocks => "col17",
         DBCol::StateHeaders => "col18",
         DBCol::InvalidChunks => "col19",
-        DBCol::BlockExtra => "col20",
+        DBCol::_BlockExtra => "col20",
         DBCol::BlockPerHeight => "col21",
         DBCol::StateParts => "col22",
         DBCol::EpochStart => "col23",
@@ -813,12 +862,17 @@ mod tests {
 
     use super::*;
 
+    unsafe fn convert_db_to_rocksdb<'a>(db: &'a dyn Database) -> &'a RocksDB {
+        let ptr = db as *const _ as *const RocksDB;
+        unsafe { &*ptr }
+    }
+
     #[test]
     fn rocksdb_merge_sanity() {
         let (_tmp_dir, opener) = NodeStorage::test_opener();
         let store = opener.open().unwrap().get_hot_store();
-        let ptr = (&*store.storage) as *const (dyn Database + 'static);
-        let rocksdb = unsafe { &*(ptr as *const RocksDB) };
+        let database = store.database();
+        let rocksdb = unsafe { convert_db_to_rocksdb(database) };
         assert_eq!(store.get(DBCol::State, &[1; 8]).unwrap(), None);
         {
             let mut store_update = store.store_update();

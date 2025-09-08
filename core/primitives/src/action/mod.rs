@@ -1,5 +1,6 @@
 pub mod delegate;
 
+use crate::trie_key::GlobalContractCodeIdentifier;
 use borsh::{BorshDeserialize, BorshSerialize};
 use near_crypto::PublicKey;
 use near_primitives_core::{
@@ -14,13 +15,12 @@ use serde_with::serde_as;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::trie_key::GlobalContractCodeIdentifier;
-
 pub fn base64(s: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(s)
 }
 
+/// An action that adds key with public key associated
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -32,6 +32,7 @@ pub fn base64(s: &[u8]) -> String {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AddKeyAction {
     /// A public key which will be associated with an access_key
     pub public_key: PublicKey,
@@ -51,6 +52,7 @@ pub struct AddKeyAction {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CreateAccountAction {}
 
 #[derive(
@@ -64,6 +66,7 @@ pub struct CreateAccountAction {}
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DeleteAccountAction {
     pub beneficiary_id: AccountId,
 }
@@ -79,6 +82,7 @@ pub struct DeleteAccountAction {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DeleteKeyAction {
     /// A public key associated with the access_key to be deleted.
     pub public_key: PublicKey,
@@ -96,9 +100,11 @@ pub struct DeleteKeyAction {
     Clone,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DeployContractAction {
     /// WebAssembly binary
     #[serde_as(as = "Base64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub code: Vec<u8>,
 }
 
@@ -110,7 +116,6 @@ impl fmt::Debug for DeployContractAction {
     }
 }
 
-#[serde_as]
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -122,6 +127,7 @@ impl fmt::Debug for DeployContractAction {
     ProtocolSchema,
     Debug,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[repr(u8)]
 pub enum GlobalContractDeployMode {
     /// Contract is deployed under its code hash.
@@ -146,9 +152,11 @@ pub enum GlobalContractDeployMode {
     Clone,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DeployGlobalContractAction {
     /// WebAssembly binary
     #[serde_as(as = "Base64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub code: Arc<[u8]>,
 
     pub deploy_mode: GlobalContractDeployMode,
@@ -163,7 +171,6 @@ impl fmt::Debug for DeployGlobalContractAction {
     }
 }
 
-#[serde_as]
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -176,9 +183,12 @@ impl fmt::Debug for DeployGlobalContractAction {
     ProtocolSchema,
     Debug,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum GlobalContractIdentifier {
-    CodeHash(CryptoHash),
-    AccountId(AccountId),
+    CodeHash(CryptoHash) = 0,
+    AccountId(AccountId) = 1,
 }
 
 impl From<GlobalContractCodeIdentifier> for GlobalContractIdentifier {
@@ -204,7 +214,6 @@ impl GlobalContractIdentifier {
 }
 
 /// Use global contract action
-#[serde_as]
 #[derive(
     BorshSerialize,
     BorshDeserialize,
@@ -216,6 +225,7 @@ impl GlobalContractIdentifier {
     ProtocolSchema,
     Debug,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UseGlobalContractAction {
     pub contract_identifier: GlobalContractIdentifier,
 }
@@ -231,12 +241,15 @@ pub struct UseGlobalContractAction {
     Clone,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FunctionCallAction {
     pub method_name: String,
     #[serde_as(as = "Base64")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub args: Vec<u8>,
     pub gas: Gas,
     #[serde(with = "dec_format")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub deposit: Balance,
 }
 
@@ -263,9 +276,11 @@ impl fmt::Debug for FunctionCallAction {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StakeAction {
     /// Amount of tokens to stake.
     #[serde(with = "dec_format")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub stake: Balance,
     /// Validator key which will be used to sign transactions on behalf of signer_id
     pub public_key: PublicKey,
@@ -282,8 +297,10 @@ pub struct StakeAction {
     serde::Deserialize,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransferAction {
     #[serde(with = "dec_format")]
+    #[cfg_attr(feature = "schemars", schemars(with = "String"))]
     pub deposit: Balance,
 }
 
@@ -299,22 +316,25 @@ pub struct TransferAction {
     strum::AsRefStr,
     ProtocolSchema,
 )]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum Action {
     /// Create an (sub)account using a transaction `receiver_id` as an ID for
     /// a new account ID must pass validation rules described here
     /// <http://nomicon.io/Primitives/Account.html>.
-    CreateAccount(CreateAccountAction),
+    CreateAccount(CreateAccountAction) = 0,
     /// Sets a Wasm code to a receiver_id
-    DeployContract(DeployContractAction),
-    FunctionCall(Box<FunctionCallAction>),
-    Transfer(TransferAction),
-    Stake(Box<StakeAction>),
-    AddKey(Box<AddKeyAction>),
-    DeleteKey(Box<DeleteKeyAction>),
-    DeleteAccount(DeleteAccountAction),
-    Delegate(Box<delegate::SignedDelegateAction>),
-    DeployGlobalContract(DeployGlobalContractAction),
-    UseGlobalContract(Box<UseGlobalContractAction>),
+    DeployContract(DeployContractAction) = 1,
+    FunctionCall(Box<FunctionCallAction>) = 2,
+    Transfer(TransferAction) = 3,
+    Stake(Box<StakeAction>) = 4,
+    AddKey(Box<AddKeyAction>) = 5,
+    DeleteKey(Box<DeleteKeyAction>) = 6,
+    DeleteAccount(DeleteAccountAction) = 7,
+    Delegate(Box<delegate::SignedDelegateAction>) = 8,
+    DeployGlobalContract(DeployGlobalContractAction) = 9,
+    UseGlobalContract(Box<UseGlobalContractAction>) = 10,
 }
 
 const _: () = assert!(
@@ -329,7 +349,7 @@ impl Action {
     pub fn get_prepaid_gas(&self) -> Gas {
         match self {
             Action::FunctionCall(a) => a.gas,
-            _ => 0,
+            _ => Gas::ZERO,
         }
     }
     pub fn get_deposit_balance(&self) -> Balance {

@@ -98,7 +98,7 @@ fn request_missing_chunk<C>(
     C::Error: fmt::Debug,
 {
     let shard_id = header.shard_id();
-    debug!(target: "client", ?shard_id, chunk_hash=?header.chunk_hash(), "request_missing_chunk");
+    debug!(target: "client", %shard_id, chunk_hash=?header.chunk_hash(), "request_missing_chunk");
     near_performance_metrics::actix::spawn("ChunkDistributionNetwork", async move {
         match client.lookup_chunk(prev_hash, shard_id).await {
             Ok(Some(chunk)) => {
@@ -222,6 +222,7 @@ mod tests {
     use near_primitives::{
         bandwidth_scheduler::BandwidthRequests,
         congestion_info::CongestionInfo,
+        gas::Gas,
         hash::hash,
         sharding::{
             PartialEncodedChunkV2, ShardChunkHeaderInner, ShardChunkHeaderV3,
@@ -407,8 +408,8 @@ mod tests {
             encoded_length: 0,
             height_created: height,
             shard_id,
-            prev_gas_used: 0,
-            gas_limit: 0,
+            prev_gas_used: Gas::ZERO,
+            gas_limit: Gas::ZERO,
             prev_balance_burnt: 0,
             prev_outgoing_receipts_root: mock_hashes.next().unwrap(),
             tx_root: mock_hashes.next().unwrap(),

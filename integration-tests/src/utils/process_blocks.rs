@@ -9,20 +9,21 @@ use near_primitives::action::{Action, DeployContractAction, FunctionCallAction};
 use near_primitives::hash::CryptoHash;
 use near_primitives::test_utils::create_test_signer;
 use near_primitives::transaction::SignedTransaction;
-use near_primitives::types::{AccountId, BlockHeight};
+use near_primitives::types::{AccountId, BlockHeight, Gas};
 use near_primitives::version::PROTOCOL_VERSION;
 use near_vm_runner::logic::ProtocolVersion;
 use node_runtime::config::Rational32;
+use std::sync::Arc;
 
 pub fn set_block_protocol_version(
-    block: &mut Block,
+    block: &mut Arc<Block>,
     block_producer: AccountId,
     protocol_version: ProtocolVersion,
 ) {
     let validator_signer = create_test_signer(block_producer.as_str());
 
-    block.mut_header().set_latest_protocol_version(protocol_version);
-    block.mut_header().resign(&validator_signer);
+    Arc::make_mut(block).mut_header().set_latest_protocol_version(protocol_version);
+    Arc::make_mut(block).mut_header().resign(&validator_signer);
 }
 
 /// Produce `blocks_number` block in the given environment, starting from the given height.
@@ -74,7 +75,7 @@ pub fn create_account(
         *block.hash(),
     );
     let tx_hash = tx.get_hash();
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     produce_blocks_from_height_with_protocol_version(env, epoch_length, height, protocol_version);
     tx_hash
 }
@@ -99,7 +100,7 @@ pub fn deploy_test_contract_with_protocol_version(
         *block.hash(),
         0,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     produce_blocks_from_height_with_protocol_version(env, epoch_length, height, protocol_version)
 }
 
@@ -131,7 +132,7 @@ pub fn prepare_env_with_congestion(
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     genesis.config.protocol_version = protocol_version;
     genesis.config.epoch_length = epoch_length;
-    genesis.config.gas_limit = 10_000_000_000_000;
+    genesis.config.gas_limit = Gas::from_teragas(10);
     if let Some(gas_price_adjustment_rate) = gas_price_adjustment_rate {
         genesis.config.gas_price_adjustment_rate = gas_price_adjustment_rate;
     }
@@ -151,7 +152,7 @@ pub fn prepare_env_with_congestion(
         *genesis_block.hash(),
         0,
     );
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
     for i in 1..3 {
         env.produce_block(0, i);
     }
@@ -180,7 +181,7 @@ pub fn prepare_env_with_congestion(
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "call_promise".to_string(),
                 args: serde_json::to_vec(&data).unwrap(),
-                gas: gas_1,
+                gas: Gas::from_gas(gas_1),
                 deposit: 0,
             }))],
             *genesis_block.hash(),
@@ -188,7 +189,7 @@ pub fn prepare_env_with_congestion(
         );
         tx_hashes.push(signed_transaction.get_hash());
         assert_eq!(
-            env.tx_request_handlers[0].process_tx(signed_transaction, false, false),
+            env.rpc_handlers[0].process_tx(signed_transaction, false, false),
             ProcessTxResponse::ValidTx
         );
     }

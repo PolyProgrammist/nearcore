@@ -8,7 +8,7 @@ use near_primitives::state_record::StateRecord;
 use near_primitives::transaction::{
     Action, DeployContractAction, FunctionCallAction, SignedTransaction,
 };
-use near_primitives::types::{AccountId, BlockHeight, Nonce};
+use near_primitives::types::{AccountId, BlockHeight, Gas, Nonce};
 
 use crate::env::nightshade_setup::TestEnvNightshadeSetupExt;
 use crate::env::test_env::TestEnv;
@@ -44,7 +44,7 @@ fn test_setup() -> (TestEnv, Signer) {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "write_random_value".to_string(),
                 args: vec![],
-                gas: 100000000000000,
+                gas: Gas::from_teragas(100),
                 deposit: 0,
             }))],
         ),
@@ -62,7 +62,7 @@ fn do_blocks(env: &mut TestEnv, start: BlockHeight, end: BlockHeight) {
 }
 
 fn send_tx(
-    env: &mut TestEnv,
+    env: &TestEnv,
     nonce: Nonce,
     signer_id: AccountId,
     receiver_id: AccountId,
@@ -72,7 +72,7 @@ fn send_tx(
     let hash = env.clients[0].chain.head().unwrap().last_block_hash;
     let tx =
         SignedTransaction::from_actions(nonce, signer_id, receiver_id, signer, actions, hash, 0);
-    env.tx_request_handlers[0].process_tx(tx, false, false)
+    env.rpc_handlers[0].process_tx(tx, false, false)
 }
 
 #[test]

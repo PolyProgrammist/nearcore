@@ -25,8 +25,6 @@ pub use crate::user::runtime_user::RuntimeUser;
 pub mod rpc_user;
 pub mod runtime_user;
 
-const POISONED_LOCK_ERR: &str = "The lock was poisoned.";
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum CommitError {
     Server(ServerError),
@@ -76,6 +74,11 @@ pub trait User {
         signed_transaction: SignedTransaction,
     ) -> Result<FinalExecutionOutcomeView, CommitError>;
 
+    fn commit_all_transactions(
+        &self,
+        signed_transaction: Vec<SignedTransaction>,
+    ) -> Result<Vec<Result<FinalExecutionOutcomeView, CommitError>>, ServerError>;
+
     fn add_receipts(
         &self,
         receipts: Vec<Receipt>,
@@ -113,14 +116,14 @@ pub trait User {
 
     fn set_signer(&mut self, signer: Arc<Signer>);
 
-    fn sign_and_commit_actions(
+    fn make_signed_transaction(
         &self,
         signer_id: AccountId,
         receiver_id: AccountId,
         actions: Vec<Action>,
-    ) -> Result<FinalExecutionOutcomeView, CommitError> {
+    ) -> SignedTransaction {
         let block_hash = self.get_best_block_hash().unwrap_or_default();
-        let signed_transaction = SignedTransaction::from_actions(
+        SignedTransaction::from_actions(
             self.get_access_key_nonce_for_signer(&signer_id).unwrap_or_default() + 1,
             signer_id,
             receiver_id,
@@ -128,8 +131,16 @@ pub trait User {
             actions,
             block_hash,
             0,
-        );
-        self.commit_transaction(signed_transaction)
+        )
+    }
+
+    fn sign_and_commit_actions(
+        &self,
+        signer_id: AccountId,
+        receiver_id: AccountId,
+        actions: Vec<Action>,
+    ) -> Result<FinalExecutionOutcomeView, CommitError> {
+        self.commit_transaction(self.make_signed_transaction(signer_id, receiver_id, actions))
     }
 
     fn send_money(

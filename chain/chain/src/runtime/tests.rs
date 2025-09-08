@@ -1,14 +1,15 @@
 use super::*;
-use crate::rayon_spawner::RayonAsyncComputationSpawner;
-use crate::types::{ChainConfig, RuntimeStorageConfig};
+use crate::spice_core::CoreStatementsProcessor;
+use crate::types::{BlockType, ChainConfig, RuntimeStorageConfig};
 use crate::{Chain, ChainGenesis, ChainStoreAccess, DoomslugThresholdMode};
 use assert_matches::assert_matches;
+use borsh::BorshDeserialize;
 use near_async::messaging::{IntoMultiSender, noop};
 use near_async::time::Clock;
 use near_chain_configs::test_utils::{TESTING_INIT_BALANCE, TESTING_INIT_STAKE};
 use near_chain_configs::{
-    DEFAULT_GC_NUM_EPOCHS_TO_KEEP, Genesis, MutableConfigValue, NEAR_BASE,
-    default_produce_chunk_add_transactions_time_limit,
+    DEFAULT_GC_NUM_EPOCHS_TO_KEEP, DEFAULT_STATE_PARTS_COMPRESSION_LEVEL, Genesis,
+    MutableConfigValue, NEAR_BASE, default_produce_chunk_add_transactions_time_limit,
 };
 use near_crypto::{InMemorySigner, Signer};
 use near_epoch_manager::EpochManager;
@@ -29,6 +30,7 @@ use near_primitives::stateless_validation::ChunkProductionKey;
 use near_primitives::test_utils::create_test_signer;
 use near_primitives::transaction::{Action, DeleteAccountAction, StakeAction, TransferAction};
 use near_primitives::trie_key::TrieKey;
+use near_primitives::types::Gas;
 use near_primitives::types::validator_stake::{ValidatorStake, ValidatorStakeIter};
 use near_primitives::types::{
     BlockHeightDelta, Nonce, ValidatorId, ValidatorInfoIdentifier, ValidatorKickoutReason,
@@ -123,7 +125,8 @@ impl TestEnv {
             if config.zero_fees { RuntimeConfigStore::free() } else { RuntimeConfigStore::test() };
 
         let compiled_contract_cache =
-            FilesystemContractRuntimeCache::new(&dir.as_ref(), None::<&str>).unwrap();
+            FilesystemContractRuntimeCache::new(&dir.as_ref(), None::<&str>, "contract.cache")
+                .unwrap();
 
         initialize_genesis_state(store.clone(), &genesis, Some(dir.path()));
         let epoch_manager = EpochManager::new_arc_handle(store.clone(), &genesis.config, None);
@@ -138,6 +141,7 @@ impl TestEnv {
             DEFAULT_GC_NUM_EPOCHS_TO_KEEP,
             Default::default(),
             StateSnapshotConfig::enabled(dir.path(), "data", "state_snapshot"),
+            DEFAULT_STATE_PARTS_COMPRESSION_LEVEL,
         );
         let state_roots = get_genesis_state_roots(&store).unwrap().unwrap();
         let genesis_hash = hash(&[0]);
@@ -206,7 +210,6 @@ impl TestEnv {
     pub fn apply_new_chunk(
         &self,
         shard_id: ShardId,
-        new_block_hash: CryptoHash,
         transactions: Vec<SignedTransaction>,
         receipts: &[Receipt],
     ) -> ApplyChunkResult {
@@ -218,7 +221,7 @@ impl TestEnv {
         let shard_layout = self.epoch_manager.get_shard_layout(&epoch_id).unwrap();
         let shard_index = shard_layout.get_shard_index(shard_id).unwrap();
         let state_root = self.state_roots[shard_index];
-        let gas_limit = u64::MAX;
+        let gas_limit = Gas::MAX;
         let height = self.head.height + 1;
         let block_timestamp = 0;
         let gas_price = self.runtime.genesis_config.min_gas_price;
@@ -243,8 +246,8 @@ impl TestEnv {
                     is_new_chunk: true,
                 },
                 ApplyChunkBlockContext {
+                    block_type: BlockType::Normal,
                     height,
-                    block_hash: new_block_hash,
                     prev_block_hash,
                     block_timestamp,
                     gas_price,
@@ -265,8 +268,7 @@ impl TestEnv {
         transactions: Vec<SignedTransaction>,
         receipts: &[Receipt],
     ) -> (CryptoHash, Vec<ValidatorStake>, Vec<Receipt>) {
-        let mut apply_result =
-            self.apply_new_chunk(shard_id, new_block_hash, transactions, receipts);
+        let mut apply_result = self.apply_new_chunk(shard_id, transactions, receipts);
         let mut store_update = self.runtime.store().store_update();
         let flat_state_changes =
             FlatStateChanges::from_state_changes(&apply_result.trie_changes.state_changes());
@@ -743,11 +745,17 @@ fn test_state_sync() {
     root_node_wrong.data = std::sync::Arc::new([123]);
     assert!(!new_env.runtime.validate_state_root_node(&root_node_wrong, &env.state_roots[0]));
     assert!(!new_env.runtime.validate_state_part(
+        ShardId::new(0),
         &Trie::EMPTY_ROOT,
         PartId::new(0, 1),
         &state_part
     ));
-    new_env.runtime.validate_state_part(&env.state_roots[0], PartId::new(0, 1), &state_part);
+    new_env.runtime.validate_state_part(
+        ShardId::new(0),
+        &env.state_roots[0],
+        PartId::new(0, 1),
+        &state_part,
+    );
     let epoch_id = &new_env.head.epoch_id;
     new_env
         .runtime
@@ -1287,7 +1295,7 @@ fn test_genesis_hash() {
     let runtime = NightshadeRuntime::test_with_runtime_config_store(
         tempdir.path(),
         store.clone(),
-        FilesystemContractRuntimeCache::new(tempdir.path(), None::<&str>)
+        FilesystemContractRuntimeCache::new(tempdir.path(), None::<&str>, "contract.cache")
             .expect("filesystem contract cache")
             .handle(),
         &genesis.config,
@@ -1378,14 +1386,18 @@ fn get_test_env_with_chain_and_pool() -> (TestEnv, Chain, TransactionPool) {
         DoomslugThresholdMode::NoApprovals,
         ChainConfig::test(),
         None,
-        Arc::new(RayonAsyncComputationSpawner),
+        Default::default(),
         MutableConfigValue::new(None, "validator_signer"),
         noop().into_multi_sender(),
+        CoreStatementsProcessor::new_with_noop_senders(
+            env.runtime.store().chain_store(),
+            env.epoch_manager.clone(),
+        ),
     )
     .unwrap();
 
     // Make sure `chain` and test `env` use the same genesis hash.
-    env.head = chain.chain_store().head().unwrap();
+    env.head = Tip::clone(&chain.chain_store().head().unwrap());
     // Produce a single block, so that `prev_block_hash` is valid.
     env.step_default(vec![]);
 
@@ -1409,10 +1421,7 @@ fn prepare_transactions(
 
     env.runtime.prepare_transactions(
         storage_config,
-        PrepareTransactionsChunkContext {
-            shard_id,
-            gas_limit: env.runtime.genesis_config.gas_limit,
-        },
+        shard_id,
         PrepareTransactionsBlockContext {
             next_gas_price: env.runtime.genesis_config.min_gas_price,
             height: env.head.height,
@@ -1496,7 +1505,7 @@ fn test_storage_proof_garbage() {
                 FunctionCallAction {
                     method_name: format!("internal_record_storage_garbage_{garbage_size_mb}"),
                     args: vec![],
-                    gas: 300000000000000,
+                    gas: Gas::from_teragas(300),
                     deposit: 300000000000000,
                 }
                 .into(),
@@ -1504,7 +1513,7 @@ fn test_storage_proof_garbage() {
         }),
         priority: 0,
     });
-    let apply_result = env.apply_new_chunk(shard_id, hash(&[42]), vec![], &[receipt]);
+    let apply_result = env.apply_new_chunk(shard_id, vec![], &[receipt]);
     let PartialState::TrieValues(storage_proof) = apply_result.proof.unwrap().nodes;
     let total_size: usize = storage_proof.iter().map(|v| v.len()).sum();
     assert_eq!(total_size / 1000_000, garbage_size_mb);
@@ -1520,8 +1529,9 @@ fn test_precompile_contracts_updates_cache() {
     initialize_genesis_state(store.clone(), &genesis, Some(tempdir.path()));
     let epoch_manager = EpochManager::new_arc_handle(store.clone(), &genesis.config, None);
 
-    let contract_cache = FilesystemContractRuntimeCache::new(tempdir.path(), None::<&str>)
-        .expect("filesystem contract cache");
+    let contract_cache =
+        FilesystemContractRuntimeCache::new(tempdir.path(), None::<&str>, "contract.cache")
+            .expect("filesystem contract cache");
     let runtime = NightshadeRuntime::test_with_runtime_config_store(
         tempdir.path(),
         store,
@@ -1539,7 +1549,7 @@ fn test_precompile_contracts_updates_cache() {
     let code_hashes: Vec<CryptoHash> = contracts.iter().map(|c| c.hash()).cloned().collect();
 
     // First check that the cache does not have the contracts.
-    for code_hash in code_hashes.iter() {
+    for code_hash in &code_hashes {
         let cache_key = get_contract_cache_key(
             *code_hash,
             &runtime.get_runtime_config(PROTOCOL_VERSION).wasm_config,
@@ -1552,7 +1562,7 @@ fn test_precompile_contracts_updates_cache() {
 
     // Check that the persistent cache contains the compiled contract after precompilation,
     // but it does not populate the in-memory cache (so that the value is generated by try_lookup call).
-    for code_hash in code_hashes.into_iter() {
+    for code_hash in code_hashes {
         let cache_key = get_contract_cache_key(
             code_hash,
             &runtime.get_runtime_config(PROTOCOL_VERSION).wasm_config,

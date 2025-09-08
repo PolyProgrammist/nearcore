@@ -1,12 +1,12 @@
-use crate::client::{ClientSenderForNetwork, SetNetworkInfo, StateRequestPart};
+use crate::client::{ClientSenderForNetwork, SetNetworkInfo, StateRequestHeader, StateRequestPart};
 use crate::config;
 use crate::debug::{DebugStatus, GetDebugStatus};
-use crate::network_protocol;
-use crate::network_protocol::SyncSnapshotHosts;
+use crate::network_protocol::{self, T2MessageBody};
 use crate::network_protocol::{
-    Disconnect, Edge, PeerIdOrHash, PeerMessage, Ping, Pong, RawRoutedMessage, RoutedMessageBody,
+    Disconnect, Edge, PeerIdOrHash, PeerMessage, Ping, Pong, RawRoutedMessage, StateHeaderRequest,
     StatePartRequest,
 };
+use crate::network_protocol::{SyncSnapshotHosts, T1MessageBody};
 use crate::peer::peer_actor::PeerActor;
 use crate::peer_manager::connection;
 use crate::peer_manager::network_state::{NetworkState, WhitelistNode};
@@ -19,8 +19,9 @@ use crate::tcp;
 use crate::types::{
     ConnectedPeerInfo, HighestHeightPeerInfo, KnownProducer, NetworkInfo, NetworkRequests,
     NetworkResponses, PeerInfo, PeerManagerMessageRequest, PeerManagerMessageResponse,
-    PeerManagerSenderForNetwork, PeerType, SetChainInfo, SnapshotHostInfo, StatePartRequestBody,
-    StateSyncEvent, Tier3Request, Tier3RequestBody,
+    PeerManagerSenderForNetwork, PeerType, SetChainInfo, SnapshotHostInfo, StateHeaderRequestBody,
+    StatePartRequestBody, StateRequestSenderForNetwork, StateSyncEvent, Tier3Request,
+    Tier3RequestBody,
 };
 use ::time::ext::InstantExt as _;
 use actix::fut::future::wrap_future;
@@ -28,7 +29,7 @@ use actix::{Actor as _, AsyncContext as _};
 use anyhow::Context as _;
 use near_async::messaging::{SendAsync, Sender};
 use near_async::time;
-use near_o11y::{WithSpanContext, handler_debug_span, handler_trace_span};
+use near_o11y::span_wrapped_msg::SpanWrappedMessageExt;
 use near_performance_metrics_macros::perf;
 use near_primitives::genesis::GenesisId;
 use near_primitives::network::{AnnounceAccount, PeerId};
@@ -214,6 +215,7 @@ impl PeerManagerActor {
         store: Arc<dyn near_store::db::Database>,
         config: config::NetworkConfig,
         client: ClientSenderForNetwork,
+        state_request_adapter: StateRequestSenderForNetwork,
         peer_manager_adapter: PeerManagerSenderForNetwork,
         shards_manager_adapter: Sender<ShardsManagerRequestFromNetwork>,
         partial_witness_adapter: PartialWitnessSenderForNetwork,
@@ -246,6 +248,7 @@ impl PeerManagerActor {
             config,
             genesis_id,
             client,
+            state_request_adapter,
             peer_manager_adapter,
             shards_manager_adapter,
             partial_witness_adapter,
@@ -259,7 +262,7 @@ impl PeerManagerActor {
                 // Start server if address provided.
                 if let Some(server_addr) = &state.config.node_addr {
                     tracing::debug!(target: "network", at = ?server_addr, "starting public server");
-                    let mut listener = match server_addr.listener() {
+                    let listener = match server_addr.listener() {
                         Ok(it) => it,
                         Err(e) => {
                             panic!("failed to start listening on server_addr={server_addr:?} e={e:?}")
@@ -289,34 +292,36 @@ impl PeerManagerActor {
                         }
                     });
                 }
-                if let Some(cfg) = state.config.tier1.clone() {
-                    // Connect to TIER1 proxies and broadcast the list those connections periodically.
-                    arbiter.spawn({
-                        let clock = clock.clone();
-                        let state = state.clone();
-                        let mut interval = time::Interval::new(clock.now(), cfg.advertise_proxies_interval);
-                        async move {
-                            loop {
-                                interval.tick(&clock).await;
-                                state.tier1_request_full_sync();
-                                state.tier1_advertise_proxies(&clock).await;
-                            }
+
+                // Connect to TIER1 proxies and broadcast the list those connections periodically.
+                let tier1 = state.config.tier1.clone();
+                arbiter.spawn({
+                    let clock = clock.clone();
+                    let state = state.clone();
+                    let mut interval = time::Interval::new(clock.now(), tier1.advertise_proxies_interval);
+                    async move {
+                        loop {
+                            interval.tick(&clock).await;
+                            state.tier1_request_full_sync();
+                            state.tier1_advertise_proxies(&clock).await;
                         }
-                    });
-                    // Update TIER1 connections periodically.
-                    arbiter.spawn({
-                        let clock = clock.clone();
-                        let state = state.clone();
-                        let mut interval = tokio::time::interval(cfg.connect_interval.try_into().unwrap());
-                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                        async move {
-                            loop {
-                                interval.tick().await;
-                                state.tier1_connect(&clock).await;
-                            }
+                    }
+                });
+
+                // Update TIER1 connections periodically.
+                arbiter.spawn({
+                    let clock = clock.clone();
+                    let state = state.clone();
+                    let mut interval = tokio::time::interval(tier1.connect_interval.try_into().unwrap());
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    async move {
+                        loop {
+                            interval.tick().await;
+                            state.tier1_connect(&clock).await;
                         }
-                    });
-                }
+                    }
+                });
+
                 // Periodically poll the connection store for connections we'd like to re-establish
                 arbiter.spawn({
                     let clock = clock.clone();
@@ -357,7 +362,7 @@ impl PeerManagerActor {
 
     /// Periodically prints bandwidth stats for each peer.
     fn report_bandwidth_stats_trigger(
-        &mut self,
+        &self,
         ctx: &mut actix::Context<Self>,
         every: time::Duration,
     ) {
@@ -751,7 +756,7 @@ impl PeerManagerActor {
         let state = self.state.clone();
         ctx.spawn(wrap_future(
             async move {
-                state.client.send_async(SetNetworkInfo(network_info)).await.ok();
+                state.client.send_async(SetNetworkInfo(network_info).span_wrap()).await.ok();
             }
             .instrument(
                 tracing::trace_span!(target: "network", "push_network_info_trigger_future"),
@@ -783,19 +788,23 @@ impl PeerManagerActor {
                 self.state.tier2.broadcast_message(Arc::new(PeerMessage::Block(block)));
                 NetworkResponses::NoResponse
             }
-            NetworkRequests::OptimisticBlock { optimistic_block } => {
-                // TODO(#10584): send this message to all the producers.
-                // Maybe we just need to send this to the next producers.
-                self.state
-                    .tier1
-                    .broadcast_message(Arc::new(PeerMessage::OptimisticBlock(optimistic_block)));
+            NetworkRequests::OptimisticBlock { chunk_producers, optimistic_block } => {
+                // TODO(saketh): the chunk_producers are identified by their validator AccountId,
+                // but OptimisticBlock is sent over a direct PeerMessage. Hence we have to perform
+                // a conversion here from AccountId to peer connection. Consider reworking this.
+                let msg = Arc::new(PeerMessage::OptimisticBlock(optimistic_block));
+                for target_account in &*chunk_producers {
+                    if let Some(conn) = self.state.get_tier1_proxy_for_account_id(&target_account) {
+                        conn.send_message(msg.clone());
+                    }
+                }
                 NetworkResponses::NoResponse
             }
             NetworkRequests::Approval { approval_message } => {
                 self.state.send_message_to_account(
                     &self.clock,
                     &approval_message.target,
-                    RoutedMessageBody::BlockApproval(approval_message.approval),
+                    T1MessageBody::BlockApproval(approval_message.approval).into(),
                 );
                 NetworkResponses::NoResponse
             }
@@ -818,15 +827,55 @@ impl PeerManagerActor {
                     NetworkResponses::RouteNotFound
                 }
             }
-            NetworkRequests::StateRequestHeader { shard_id, sync_hash, peer_id } => {
-                if self.state.tier2.send_message(
-                    peer_id,
-                    Arc::new(PeerMessage::StateRequestHeader(shard_id, sync_hash)),
-                ) {
-                    NetworkResponses::NoResponse
-                } else {
-                    NetworkResponses::RouteNotFound
+            NetworkRequests::StateRequestHeader { shard_id, sync_hash, sync_prev_prev_hash } => {
+                // Select a peer which has advertised availability of the desired
+                // state snapshot.
+                let Some(peer_id) = self
+                    .state
+                    .snapshot_hosts
+                    .select_host_for_header(&sync_prev_prev_hash, shard_id)
+                else {
+                    tracing::debug!(target: "network", %shard_id, ?sync_hash, "no snapshot hosts available");
+                    return NetworkResponses::NoDestinationsAvailable;
+                };
+
+                // If we have a direct connection we can simply send a StateRequestHeader message
+                // over it. This is a bit of a hack for upgradability and can be deleted in the
+                // next release.
+                {
+                    if self.state.tier2.send_message(
+                        peer_id.clone(),
+                        Arc::new(PeerMessage::StateRequestHeader(shard_id, sync_hash)),
+                    ) {
+                        return NetworkResponses::SelectedDestination(peer_id);
+                    }
                 }
+
+                // The node needs to include its own public address in the request
+                // so that the response can be sent over a direct Tier3 connection.
+                let Some(addr) = *self.state.my_public_addr.read() else {
+                    return NetworkResponses::MyPublicAddrNotKnown;
+                };
+
+                let routed_message = self.state.sign_message(
+                    &self.clock,
+                    RawRoutedMessage {
+                        target: PeerIdOrHash::PeerId(peer_id.clone()),
+                        body: T2MessageBody::StateHeaderRequest(StateHeaderRequest {
+                            shard_id,
+                            sync_hash,
+                            addr,
+                        })
+                        .into(),
+                    },
+                );
+
+                if !self.state.send_message_to_peer(&self.clock, tcp::Tier::T2, routed_message) {
+                    return NetworkResponses::RouteNotFound;
+                }
+
+                tracing::debug!(target: "network", %shard_id, ?sync_hash, "requesting state header from host {peer_id}");
+                NetworkResponses::SelectedDestination(peer_id)
             }
             NetworkRequests::StateRequestPart {
                 shard_id,
@@ -834,37 +883,43 @@ impl PeerManagerActor {
                 sync_prev_prev_hash,
                 part_id,
             } => {
-                let mut success = false;
-
                 // The node needs to include its own public address in the request
-                // so that the response can be sent over Tier3
-                if let Some(addr) = *self.state.my_public_addr.read() {
-                    if let Some(peer_id) = self.state.snapshot_hosts.select_host_for_part(
-                        &sync_prev_prev_hash,
-                        shard_id,
-                        part_id,
-                    ) {
-                        tracing::debug!(target: "network", "requesting {sync_prev_prev_hash} {shard_id} {part_id} from {peer_id}");
-                        success =
-                            self.state.send_message_to_peer(
-                                &self.clock,
-                                tcp::Tier::T2,
-                                self.state.sign_message(
-                                    &self.clock,
-                                    RawRoutedMessage {
-                                        target: PeerIdOrHash::PeerId(peer_id),
-                                        body: RoutedMessageBody::StatePartRequest(
-                                            StatePartRequest { shard_id, sync_hash, part_id, addr },
-                                        ),
-                                    },
-                                ),
-                            );
-                    } else {
-                        tracing::debug!(target: "network", "no hosts available for {shard_id}, {sync_prev_prev_hash}");
-                    }
+                // so that the response can be sent over a direct Tier3 connection.
+                let Some(addr) = *self.state.my_public_addr.read() else {
+                    return NetworkResponses::MyPublicAddrNotKnown;
+                };
+
+                // Select a peer which has advertised availability of the desired
+                // state snapshot.
+                let Some(peer_id) = self.state.snapshot_hosts.select_host_for_part(
+                    &sync_prev_prev_hash,
+                    shard_id,
+                    part_id,
+                ) else {
+                    tracing::debug!(target: "network", %shard_id, ?sync_hash, ?part_id, "no snapshot hosts available");
+                    return NetworkResponses::NoDestinationsAvailable;
+                };
+
+                let routed_message = self.state.sign_message(
+                    &self.clock,
+                    RawRoutedMessage {
+                        target: PeerIdOrHash::PeerId(peer_id.clone()),
+                        body: T2MessageBody::StatePartRequest(StatePartRequest {
+                            shard_id,
+                            sync_hash,
+                            part_id,
+                            addr,
+                        })
+                        .into(),
+                    },
+                );
+
+                if !self.state.send_message_to_peer(&self.clock, tcp::Tier::T2, routed_message) {
+                    return NetworkResponses::RouteNotFound;
                 }
 
-                if success { NetworkResponses::NoResponse } else { NetworkResponses::RouteNotFound }
+                tracing::debug!(target: "network", %shard_id, ?sync_hash, ?part_id, "requesting state part from host {peer_id}");
+                NetworkResponses::SelectedDestination(peer_id)
             }
             NetworkRequests::SnapshotHostInfo { sync_hash, mut epoch_height, mut shards } => {
                 if shards.len() > MAX_SHARDS_PER_SNAPSHOT_HOST_INFO {
@@ -943,7 +998,7 @@ impl PeerManagerActor {
                             if self.state.send_message_to_account(
                                 &self.clock,
                                 account_id,
-                                RoutedMessageBody::PartialEncodedChunkRequest(request.clone()),
+                                T2MessageBody::PartialEncodedChunkRequest(request.clone()).into(),
                             ) {
                                 success = true;
                                 break;
@@ -971,9 +1026,10 @@ impl PeerManagerActor {
                                     &self.clock,
                                     RawRoutedMessage {
                                         target: PeerIdOrHash::PeerId(matching_peer.clone()),
-                                        body: RoutedMessageBody::PartialEncodedChunkRequest(
+                                        body: T2MessageBody::PartialEncodedChunkRequest(
                                             request.clone(),
-                                        ),
+                                        )
+                                        .into(),
                                     },
                                 ),
                             ) {
@@ -1001,7 +1057,7 @@ impl PeerManagerActor {
                         &self.clock,
                         RawRoutedMessage {
                             target: PeerIdOrHash::Hash(route_back),
-                            body: RoutedMessageBody::PartialEncodedChunkResponse(response),
+                            body: T2MessageBody::PartialEncodedChunkResponse(response).into(),
                         },
                     ),
                 ) {
@@ -1014,7 +1070,10 @@ impl PeerManagerActor {
                 if self.state.send_message_to_account(
                     &self.clock,
                     &account_id,
-                    RoutedMessageBody::VersionedPartialEncodedChunk(partial_encoded_chunk.into()),
+                    T1MessageBody::VersionedPartialEncodedChunk(Box::new(
+                        partial_encoded_chunk.into(),
+                    ))
+                    .into(),
                 ) {
                     NetworkResponses::NoResponse
                 } else {
@@ -1025,7 +1084,7 @@ impl PeerManagerActor {
                 if self.state.send_message_to_account(
                     &self.clock,
                     &account_id,
-                    RoutedMessageBody::PartialEncodedChunkForward(forward),
+                    T1MessageBody::PartialEncodedChunkForward(forward).into(),
                 ) {
                     NetworkResponses::NoResponse
                 } else {
@@ -1036,7 +1095,7 @@ impl PeerManagerActor {
                 if self.state.send_message_to_account(
                     &self.clock,
                     &account_id,
-                    RoutedMessageBody::ForwardTx(tx),
+                    T2MessageBody::ForwardTx(tx).into(),
                 ) {
                     NetworkResponses::NoResponse
                 } else {
@@ -1047,7 +1106,7 @@ impl PeerManagerActor {
                 if self.state.send_message_to_account(
                     &self.clock,
                     &account_id,
-                    RoutedMessageBody::TxStatusRequest(signer_account_id, tx_hash),
+                    T2MessageBody::TxStatusRequest(signer_account_id, tx_hash).into(),
                 ) {
                     NetworkResponses::NoResponse
                 } else {
@@ -1058,7 +1117,7 @@ impl PeerManagerActor {
                 self.state.send_message_to_account(
                     &self.clock,
                     &target,
-                    RoutedMessageBody::ChunkStateWitnessAck(ack),
+                    T2MessageBody::ChunkStateWitnessAck(ack).into(),
                 );
                 NetworkResponses::NoResponse
             }
@@ -1066,16 +1125,32 @@ impl PeerManagerActor {
                 self.state.send_message_to_account(
                     &self.clock,
                     &target,
-                    RoutedMessageBody::VersionedChunkEndorsement(endorsement),
+                    T1MessageBody::VersionedChunkEndorsement(endorsement).into(),
                 );
                 NetworkResponses::NoResponse
             }
             NetworkRequests::PartialEncodedStateWitness(validator_witness_tuple) => {
+                let Some(partial_witness) = validator_witness_tuple.first().map(|(_, w)| w) else {
+                    return NetworkResponses::NoResponse;
+                };
+                let part_owners = validator_witness_tuple
+                    .iter()
+                    .map(|(validator, _)| validator.clone())
+                    .collect::<Vec<_>>();
+                let _span = tracing::debug_span!(target: "network",
+                    "send partial_encoded_state_witnesses",
+                    height = partial_witness.chunk_production_key().height_created,
+                    shard_id = %partial_witness.chunk_production_key().shard_id,
+                    part_owners_len = part_owners.len(),
+                    tag_witness_distribution = true,
+                )
+                .entered();
+
                 for (chunk_validator, partial_witness) in validator_witness_tuple {
                     self.state.send_message_to_account(
                         &self.clock,
                         &chunk_validator,
-                        RoutedMessageBody::PartialEncodedStateWitness(partial_witness),
+                        T1MessageBody::PartialEncodedStateWitness(partial_witness).into(),
                     );
                 }
                 NetworkResponses::NoResponse
@@ -1084,13 +1159,20 @@ impl PeerManagerActor {
                 chunk_validators,
                 partial_witness,
             ) => {
+                let _span = tracing::debug_span!(target: "network",
+                    "send partial_encoded_state_witness_forward",
+                    height = partial_witness.chunk_production_key().height_created,
+                    shard_id = %partial_witness.chunk_production_key().shard_id,
+                    part_ord = partial_witness.part_ord(),
+                    tag_witness_distribution = true,
+                )
+                .entered();
                 for chunk_validator in chunk_validators {
                     self.state.send_message_to_account(
                         &self.clock,
                         &chunk_validator,
-                        RoutedMessageBody::PartialEncodedStateWitnessForward(
-                            partial_witness.clone(),
-                        ),
+                        T1MessageBody::PartialEncodedStateWitnessForward(partial_witness.clone())
+                            .into(),
                     );
                 }
                 NetworkResponses::NoResponse
@@ -1118,7 +1200,7 @@ impl PeerManagerActor {
                     self.state.send_message_to_account(
                         &self.clock,
                         &validator,
-                        RoutedMessageBody::ChunkContractAccesses(accesses.clone()),
+                        T1MessageBody::ChunkContractAccesses(accesses.clone()).into(),
                     );
                 }
                 NetworkResponses::NoResponse
@@ -1127,7 +1209,7 @@ impl PeerManagerActor {
                 self.state.send_message_to_account(
                     &self.clock,
                     &target,
-                    RoutedMessageBody::ContractCodeRequest(request),
+                    T1MessageBody::ContractCodeRequest(request).into(),
                 );
                 NetworkResponses::NoResponse
             }
@@ -1135,7 +1217,7 @@ impl PeerManagerActor {
                 self.state.send_message_to_account(
                     &self.clock,
                     &target,
-                    RoutedMessageBody::ContractCodeResponse(response),
+                    T1MessageBody::ContractCodeResponse(response).into(),
                 );
                 NetworkResponses::NoResponse
             }
@@ -1146,14 +1228,24 @@ impl PeerManagerActor {
                     self.state.send_message_to_account(
                         &self.clock,
                         &account,
-                        RoutedMessageBody::PartialEncodedContractDeploys(deploys.clone()),
+                        T2MessageBody::PartialEncodedContractDeploys(deploys.clone()).into(),
                     );
                 }
                 self.state.send_message_to_account(
                     &self.clock,
                     &last_account,
-                    RoutedMessageBody::PartialEncodedContractDeploys(deploys),
+                    T2MessageBody::PartialEncodedContractDeploys(deploys).into(),
                 );
+                NetworkResponses::NoResponse
+            }
+            // TODO(spice): remove
+            NetworkRequests::TestonlySpiceIncomingReceipts { .. } => {
+                debug_assert!(false);
+                NetworkResponses::NoResponse
+            }
+            // TODO(spice): remove
+            NetworkRequests::TestonlySpiceStateWitness { .. } => {
+                debug_assert!(false);
                 NetworkResponses::NoResponse
             }
         }
@@ -1195,11 +1287,10 @@ impl PeerManagerActor {
     }
 }
 
-impl actix::Handler<WithSpanContext<SetChainInfo>> for PeerManagerActor {
+impl actix::Handler<SetChainInfo> for PeerManagerActor {
     type Result = ();
     #[perf]
-    fn handle(&mut self, msg: WithSpanContext<SetChainInfo>, ctx: &mut Self::Context) {
-        let (_span, SetChainInfo(info)) = handler_trace_span!(target: "network", msg);
+    fn handle(&mut self, SetChainInfo(info): SetChainInfo, ctx: &mut Self::Context) {
         let _timer =
             metrics::PEER_MANAGER_MESSAGES_TIME.with_label_values(&["SetChainInfo"]).start_timer();
         // We call self.state.set_chain_info()
@@ -1229,30 +1320,20 @@ impl actix::Handler<WithSpanContext<SetChainInfo>> for PeerManagerActor {
     }
 }
 
-impl actix::Handler<WithSpanContext<PeerManagerMessageRequest>> for PeerManagerActor {
+impl actix::Handler<PeerManagerMessageRequest> for PeerManagerActor {
     type Result = PeerManagerMessageResponse;
     #[perf]
-    fn handle(
-        &mut self,
-        msg: WithSpanContext<PeerManagerMessageRequest>,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let (_span, msg) = handler_debug_span!(target: "network", msg);
+    fn handle(&mut self, msg: PeerManagerMessageRequest, ctx: &mut Self::Context) -> Self::Result {
         let _timer =
             metrics::PEER_MANAGER_MESSAGES_TIME.with_label_values(&[(&msg).into()]).start_timer();
         self.handle_peer_manager_message(msg, ctx)
     }
 }
 
-impl actix::Handler<WithSpanContext<StateSyncEvent>> for PeerManagerActor {
+impl actix::Handler<StateSyncEvent> for PeerManagerActor {
     type Result = ();
     #[perf]
-    fn handle(
-        &mut self,
-        msg: WithSpanContext<StateSyncEvent>,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let (_span, msg) = handler_debug_span!(target: "network", msg);
+    fn handle(&mut self, msg: StateSyncEvent, _ctx: &mut Self::Context) -> Self::Result {
         let _timer =
             metrics::PEER_MANAGER_MESSAGES_TIME.with_label_values(&[(&msg).into()]).start_timer();
         match msg {
@@ -1263,15 +1344,10 @@ impl actix::Handler<WithSpanContext<StateSyncEvent>> for PeerManagerActor {
     }
 }
 
-impl actix::Handler<WithSpanContext<Tier3Request>> for PeerManagerActor {
+impl actix::Handler<Tier3Request> for PeerManagerActor {
     type Result = ();
     #[perf]
-    fn handle(
-        &mut self,
-        request: WithSpanContext<Tier3Request>,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let (_span, request) = handler_debug_span!(target: "network", request);
+    fn handle(&mut self, request: Tier3Request, ctx: &mut Self::Context) -> Self::Result {
         let _timer = metrics::PEER_MANAGER_TIER3_REQUEST_TIME
             .with_label_values(&[(&request.body).into()])
             .start_timer();
@@ -1281,8 +1357,23 @@ impl actix::Handler<WithSpanContext<Tier3Request>> for PeerManagerActor {
         ctx.spawn(wrap_future(
             async move {
                 let tier3_response = match request.body {
+                    Tier3RequestBody::StateHeader(StateHeaderRequestBody { shard_id, sync_hash }) => {
+                        match state.state_request_adapter.send_async(StateRequestHeader { shard_id, sync_hash }).await {
+                            Ok(Some(client_response)) => {
+                                PeerMessage::VersionedStateResponse(*client_response.0)
+                            }
+                            Ok(None) => {
+                                tracing::debug!(target: "network", ?request, "client declined to respond");
+                                return;
+                            }
+                            Err(err) => {
+                                tracing::error!(target: "network", ?request, ?err, "client failed to respond");
+                                return;
+                            }
+                        }
+                    }
                     Tier3RequestBody::StatePart(StatePartRequestBody { shard_id, sync_hash, part_id }) => {
-                        match state.client.send_async(StateRequestPart { shard_id, sync_hash, part_id }).await {
+                        match state.state_request_adapter.send_async(StateRequestPart { shard_id, sync_hash, part_id }).await {
                             Ok(Some(client_response)) => {
                                 PeerMessage::VersionedStateResponse(*client_response.0)
                             }

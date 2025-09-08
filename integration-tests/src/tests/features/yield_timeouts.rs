@@ -9,6 +9,7 @@ use near_primitives::transaction::{
     Action, DeployContractAction, FunctionCallAction, SignedTransaction,
 };
 use near_primitives::types::AccountId;
+use near_primitives::types::Gas;
 use near_primitives::views::FinalExecutionStatus;
 
 use crate::env::nightshade_setup::TestEnvNightshadeSetupExt;
@@ -61,7 +62,7 @@ fn prepare_env_with_yield(
     init_test_logger();
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     if let Some(gas_limit) = test_env_gas_limit {
-        genesis.config.gas_limit = gas_limit;
+        genesis.config.gas_limit = Gas::from_gas(gas_limit);
     }
     let mut env = TestEnv::builder(&genesis.config).nightshade_runtimes(&genesis).build();
     let genesis_block = env.clients[0].chain.get_block_by_height(0).unwrap();
@@ -80,7 +81,7 @@ fn prepare_env_with_yield(
         0,
     );
     let tx_hash = tx.get_hash();
-    assert_eq!(env.tx_request_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
+    assert_eq!(env.rpc_handlers[0].process_tx(tx, false, false), ProcessTxResponse::ValidTx);
 
     // Allow two blocks for the contract to be deployed
     for i in 1..3 {
@@ -100,7 +101,7 @@ fn prepare_env_with_yield(
         vec![Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "call_yield_create_return_promise".to_string(),
             args: anticipated_yield_payload,
-            gas: 300_000_000_000_000,
+            gas: Gas::from_teragas(300),
             deposit: 0,
         }))],
         *genesis_block.hash(),
@@ -108,7 +109,7 @@ fn prepare_env_with_yield(
     );
     let yield_tx_hash = yield_transaction.get_hash();
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(yield_transaction, false, false),
+        env.rpc_handlers[0].process_tx(yield_transaction, false, false),
         ProcessTxResponse::ValidTx
     );
 
@@ -127,11 +128,7 @@ fn prepare_env_with_yield(
 }
 
 /// Add a transaction which invokes yield resume using given data id.
-fn invoke_yield_resume(
-    env: &mut TestEnv,
-    data_id: CryptoHash,
-    yield_payload: Vec<u8>,
-) -> CryptoHash {
+fn invoke_yield_resume(env: &TestEnv, data_id: CryptoHash, yield_payload: Vec<u8>) -> CryptoHash {
     let signer = InMemorySigner::test_signer(&"test0".parse().unwrap());
     let genesis_block = env.clients[0].chain.get_block_by_height(0).unwrap();
 
@@ -143,7 +140,7 @@ fn invoke_yield_resume(
         vec![Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "call_yield_resume".to_string(),
             args: yield_payload.into_iter().chain(data_id.as_bytes().iter().cloned()).collect(),
-            gas: 300_000_000_000_000,
+            gas: Gas::from_teragas(300),
             deposit: 0,
         }))],
         *genesis_block.hash(),
@@ -151,7 +148,7 @@ fn invoke_yield_resume(
     );
     let tx_hash = resume_transaction.get_hash();
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(resume_transaction, false, false),
+        env.rpc_handlers[0].process_tx(resume_transaction, false, false),
         ProcessTxResponse::ValidTx
     );
     tx_hash
@@ -161,7 +158,7 @@ fn invoke_yield_resume(
 ///
 /// Note that these transactions start to be processed in the *second* block produced after they are
 /// inserted to client 0's mempool.
-fn create_congestion(env: &mut TestEnv) {
+fn create_congestion(env: &TestEnv) {
     let signer = InMemorySigner::test_signer(&"test0".parse().unwrap());
     let genesis_block = env.clients[0].chain.get_block_by_height(0).unwrap();
 
@@ -176,7 +173,7 @@ fn create_congestion(env: &mut TestEnv) {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "epoch_height".to_string(),
                 args: vec![],
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 0,
             }))],
             *genesis_block.hash(),
@@ -184,7 +181,7 @@ fn create_congestion(env: &mut TestEnv) {
         );
         tx_hashes.push(signed_transaction.get_hash());
         assert_eq!(
-            env.tx_request_handlers[0].process_tx(signed_transaction, false, false),
+            env.rpc_handlers[0].process_tx(signed_transaction, false, false),
             ProcessTxResponse::ValidTx
         );
     }

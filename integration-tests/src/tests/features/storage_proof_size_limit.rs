@@ -10,6 +10,7 @@ use near_primitives::errors::{ActionErrorKind, TxExecutionError};
 use near_primitives::receipt::{Receipt, ReceiptEnum};
 use near_primitives::transaction::SignedTransaction;
 use near_primitives::types::AccountId;
+use near_primitives::types::Gas;
 use near_primitives::version::PROTOCOL_VERSION;
 use near_primitives::views::FinalExecutionStatus;
 
@@ -58,7 +59,7 @@ fn test_storage_proof_size_limit() {
         let action = Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "write_one_megabyte".to_string(),
             args: vec![idx],
-            gas: 300_000_000_000_000,
+            gas: Gas::from_teragas(300),
             deposit: 0,
         }));
 
@@ -82,7 +83,7 @@ fn test_storage_proof_size_limit() {
         let action = Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: "read_n_megabytes".to_string(),
             args: vec![from, to],
-            gas: 300_000_000_000_000,
+            gas: Gas::from_teragas(300),
             deposit: 0,
         }));
         let tx = SignedTransaction::from_actions(
@@ -132,7 +133,7 @@ fn test_storage_proof_size_limit() {
     let read2_txs =
         [make_read_transaction(0, 3), make_read_transaction(3, 6), make_read_transaction(6, 9)];
     for read2_tx in &read2_txs {
-        let response = env.tx_request_handlers[0].process_tx(read2_tx.clone(), false, false);
+        let response = env.rpc_handlers[0].process_tx(read2_tx.clone(), false, false);
         assert_eq!(response, ProcessTxResponse::ValidTx);
     }
 

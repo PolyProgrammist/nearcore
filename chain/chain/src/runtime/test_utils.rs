@@ -1,9 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use near_chain_configs::{DEFAULT_GC_NUM_EPOCHS_TO_KEEP, GenesisConfig};
+use near_chain_configs::{
+    DEFAULT_GC_NUM_EPOCHS_TO_KEEP, DEFAULT_STATE_PARTS_COMPRESSION_LEVEL, GenesisConfig,
+};
 use near_epoch_manager::EpochManagerHandle;
 use near_parameters::RuntimeConfigStore;
+use near_store::config::STATE_SNAPSHOT_DIR;
 use near_store::{StateSnapshotConfig, Store, TrieConfig};
 use near_vm_runner::{ContractRuntimeCache, FilesystemContractRuntimeCache};
 
@@ -28,7 +31,8 @@ impl NightshadeRuntime {
             Some(runtime_config_store),
             DEFAULT_GC_NUM_EPOCHS_TO_KEEP,
             Default::default(),
-            StateSnapshotConfig::enabled(home_dir, "data", "state_snapshot"),
+            StateSnapshotConfig::enabled(home_dir, "data", STATE_SNAPSHOT_DIR),
+            DEFAULT_STATE_PARTS_COMPRESSION_LEVEL,
         )
     }
 
@@ -52,7 +56,8 @@ impl NightshadeRuntime {
             runtime_config_store,
             gc_num_epochs_to_keep,
             trie_config,
-            StateSnapshotConfig::enabled(home_dir, "data", "state_snapshot"),
+            StateSnapshotConfig::enabled(home_dir, "data", STATE_SNAPSHOT_DIR),
+            DEFAULT_STATE_PARTS_COMPRESSION_LEVEL,
         )
     }
 
@@ -65,9 +70,14 @@ impl NightshadeRuntime {
         Self::test_with_runtime_config_store(
             home_dir,
             store,
-            FilesystemContractRuntimeCache::with_memory_cache(home_dir, None::<&str>, 1)
-                .expect("filesystem contract cache")
-                .handle(),
+            FilesystemContractRuntimeCache::with_memory_cache(
+                home_dir,
+                None::<&str>,
+                "contract.cache",
+                1,
+            )
+            .expect("filesystem contract cache")
+            .handle(),
             genesis_config,
             epoch_manager,
             RuntimeConfigStore::test(),

@@ -13,7 +13,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::shard_layout::ShardLayout;
 use near_primitives::sharding::{ShardChunk, ShardChunkHeader};
 use near_primitives::transaction::SignedTransaction;
-use near_primitives::types::ShardId;
+use near_primitives::types::{Gas, ShardId};
 use near_primitives::version::{PROTOCOL_VERSION, ProtocolFeature};
 use near_primitives::views::FinalExecutionStatus;
 use near_vm_runner::logic::ProtocolVersion;
@@ -173,7 +173,7 @@ fn head_chunk_header(env: &TestEnv, shard_id: ShardId) -> ShardChunkHeader {
     chunks.get(shard_index).expect("chunk header must be available").clone()
 }
 
-fn head_chunk(env: &TestEnv, shard_id: ShardId) -> Arc<ShardChunk> {
+fn head_chunk(env: &TestEnv, shard_id: ShardId) -> ShardChunk {
     let chunk_header = head_chunk_header(&env, shard_id);
     env.clients[0].chain.get_chunk(&chunk_header.chunk_hash()).expect("chunk must be available")
 }
@@ -184,7 +184,7 @@ fn new_fn_call_100tgas(
     signer: &Signer,
     block_hash: CryptoHash,
 ) -> SignedTransaction {
-    let hundred_tgas = 100 * 10u64.pow(12);
+    let hundred_tgas = Gas::from_teragas(100);
     let deposit = 0;
     let nonce = *nonce_source;
     *nonce_source += 1;
@@ -210,7 +210,7 @@ fn new_cheap_fn_call(
     receiver: AccountId,
     block_hash: CryptoHash,
 ) -> SignedTransaction {
-    let one_tgas = 1 * 10u64.pow(12);
+    let one_tgas = Gas::from_teragas(1);
     let deposit = 0;
     let nonce = *nonce_source;
     *nonce_source += 1;
@@ -229,13 +229,13 @@ fn new_cheap_fn_call(
 
 /// Submit N transaction containing a function call action with 100 Tgas
 /// attached that will all be burned when called.
-fn submit_n_100tgas_fns(env: &mut TestEnv, n: u32, nonce: &mut u64, signer: &Signer) -> u32 {
+fn submit_n_100tgas_fns(env: &TestEnv, n: u32, nonce: &mut u64, signer: &Signer) -> u32 {
     let mut included = 0;
     let block = env.clients[0].chain.get_head_block().unwrap();
     for _ in 0..n {
         let fn_tx = new_fn_call_100tgas(nonce, signer, *block.hash());
         // this only adds the tx to the pool, no chain progress is made
-        let response = env.tx_request_handlers[0].process_tx(fn_tx, false, false);
+        let response = env.rpc_handlers[0].process_tx(fn_tx, false, false);
         match response {
             ProcessTxResponse::ValidTx => {
                 included += 1;
@@ -249,7 +249,7 @@ fn submit_n_100tgas_fns(env: &mut TestEnv, n: u32, nonce: &mut u64, signer: &Sig
 
 /// Submit N transaction containing a cheap function call action.
 fn submit_n_cheap_fns(
-    env: &mut TestEnv,
+    env: &TestEnv,
     n: u32,
     nonce: &mut u64,
     signer: &Signer,
@@ -259,7 +259,7 @@ fn submit_n_cheap_fns(
     for _ in 0..n {
         let fn_tx = new_cheap_fn_call(nonce, signer, receiver.clone(), *block.hash());
         // this only adds the tx to the pool, no chain progress is made
-        let response = env.tx_request_handlers[0].process_tx(fn_tx, false, false);
+        let response = env.rpc_handlers[0].process_tx(fn_tx, false, false);
         assert_eq!(response, ProcessTxResponse::ValidTx);
     }
 }
@@ -449,7 +449,7 @@ fn measure_tx_limit(
         UpperLimitCongestion::AboveRejectThreshold => config.reject_tx_congestion_threshold * 2.0,
     };
 
-    let num_full_congestion = config.max_congestion_incoming_gas / (100 * 10u64.pow(12));
+    let num_full_congestion = config.max_congestion_incoming_gas.as_teragas() / 100;
     let n = num_full_congestion as f64 * upper_limit_congestion;
     // Key of new account starts at block_height * 1_000_000
     let tip = env.clients[0].chain.head().unwrap();
@@ -537,7 +537,7 @@ fn test_rpc_client_rejection() {
         &signer,
         *env.clients[0].chain.head_header().unwrap().hash(),
     );
-    let response = env.tx_request_handlers[0].process_tx(fn_tx, false, false);
+    let response = env.rpc_handlers[0].process_tx(fn_tx, false, false);
     assert_eq!(response, ProcessTxResponse::ValidTx);
 
     // Congest the network with a burst of 100 PGas.
@@ -556,7 +556,7 @@ fn test_rpc_client_rejection() {
         &signer,
         *env.clients[0].chain.head_header().unwrap().hash(),
     );
-    let response = env.tx_request_handlers[0].process_tx(fn_tx, false, false);
+    let response = env.rpc_handlers[0].process_tx(fn_tx, false, false);
 
     assert_matches!(response, ProcessTxResponse::InvalidTx(InvalidTxError::ShardCongested { .. }));
 }

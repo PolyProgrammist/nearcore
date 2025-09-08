@@ -25,7 +25,7 @@ use tracing::warn;
 //    Users of the data structure are responsible for adding chunk to this map at the right time.
 
 /// A chunk is out of rear horizon if its height + HEIGHT_HORIZON < largest_seen_height
-const HEIGHT_HORIZON: BlockHeightDelta = 1024;
+const HEIGHT_HORIZON: BlockHeightDelta = 128;
 /// A chunk is out of front horizon if its height > largest_seen_height + MAX_HEIGHTS_AHEAD
 const MAX_HEIGHTS_AHEAD: BlockHeightDelta = 5;
 
@@ -176,7 +176,7 @@ impl EncodedChunksCache {
         chunk_header: &ShardChunkHeader,
     ) -> &mut EncodedChunksCacheEntry {
         let chunk_hash = chunk_header.chunk_hash();
-        self.encoded_chunks.entry(chunk_hash).or_insert_with_key(|chunk_hash| {
+        self.encoded_chunks.entry(chunk_hash.clone()).or_insert_with_key(|chunk_hash| {
             self.height_map
                 .entry(chunk_header.height_created())
                 .or_default()
@@ -277,7 +277,7 @@ mod tests {
     use near_crypto::KeyType;
     use near_primitives::hash::CryptoHash;
     use near_primitives::sharding::{ShardChunkHeader, ShardChunkHeaderV2};
-    use near_primitives::types::ShardId;
+    use near_primitives::types::{Gas, ShardId};
     use near_primitives::validator_signer::InMemoryValidatorSigner;
 
     use crate::chunk_cache::EncodedChunksCache;
@@ -294,8 +294,8 @@ mod tests {
             1,
             height,
             shard_id,
-            0,
-            0,
+            Gas::ZERO,
+            Gas::ZERO,
             0,
             CryptoHash::default(),
             CryptoHash::default(),
@@ -317,12 +317,12 @@ mod tests {
         );
         assert_eq!(
             cache.get_incomplete_chunks(&CryptoHash::default()).unwrap(),
-            &HashSet::from([header0.chunk_hash(), header1.chunk_hash()])
+            &HashSet::from([header0.chunk_hash().clone(), header1.chunk_hash().clone()])
         );
         cache.mark_entry_complete(&header0.chunk_hash());
         assert_eq!(
             cache.get_incomplete_chunks(&CryptoHash::default()).unwrap(),
-            &[header1.chunk_hash()].into_iter().collect::<HashSet<_>>()
+            &[header1.chunk_hash().clone()].into_iter().collect::<HashSet<_>>()
         );
         cache.mark_entry_complete(&header1.chunk_hash());
         assert_eq!(cache.get_incomplete_chunks(&CryptoHash::default()), None);

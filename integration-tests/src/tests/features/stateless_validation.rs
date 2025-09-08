@@ -1,6 +1,8 @@
 use crate::tests::features::wallet_contract::{NearSigner, create_rlp_execute_tx, view_balance};
-use assert_matches::assert_matches;
+
+use near_chain::Error;
 use near_chain::Provenance;
+use near_chain::chain::ChunkStateWitnessMessage;
 use near_chain_configs::{Genesis, GenesisConfig, GenesisRecords};
 use near_client::ProcessTxResponse;
 use near_crypto::{InMemorySigner, KeyType, SecretKey};
@@ -16,13 +18,14 @@ use near_primitives::state_record::StateRecord;
 use near_primitives::stateless_validation::state_witness::ChunkStateWitness;
 use near_primitives::test_utils::{create_test_signer, create_user_test_signer};
 use near_primitives::transaction::SignedTransaction;
-use near_primitives::types::{AccountInfo, EpochId, ShardId};
+use near_primitives::types::{AccountInfo, EpochId, Gas, ShardId};
 use near_primitives::utils::derive_eth_implicit_account_id;
 use near_primitives::version::{PROTOCOL_VERSION, ProtocolVersion};
 use near_primitives::views::FinalExecutionStatus;
 use near_primitives_core::account::{AccessKey, Account};
 use near_primitives_core::types::{AccountId, NumSeats};
 use near_store::test_utils::create_test_store;
+use node_runtime::config::total_prepaid_gas;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet};
@@ -77,7 +80,7 @@ fn run_chunk_validation_test(
         // this must still have the same length as the number of shards,
         // or else the genesis fails validation.
         num_block_producer_seats_per_shard: vec![8; num_shards],
-        gas_limit: 10u64.pow(15),
+        gas_limit: Gas::from_teragas(1000),
         transaction_validity_period: 120,
         // Needed to completely avoid validator kickouts as we want to test
         // missing chunks functionality.
@@ -161,7 +164,7 @@ fn run_chunk_validation_test(
                 tip.last_block_hash,
             );
             tx_hashes.push(tx.get_hash());
-            let _ = env.tx_request_handlers[0].process_tx(tx, false, false);
+            let _ = env.rpc_handlers[0].process_tx(tx, false, false);
         }
 
         let height_offset = height - tip.height;
@@ -347,17 +350,30 @@ fn test_chunk_state_witness_bad_shard_id() {
     let previous_block = env.clients[0].chain.head().unwrap().prev_block_hash;
     let invalid_shard_id = ShardId::new(1000000000);
     let witness = ChunkStateWitness::new_dummy(upper_height, invalid_shard_id, previous_block);
-    let witness_size = borsh::to_vec(&witness).unwrap().len();
+    let witness_size = borsh::object_length(&witness).unwrap();
 
-    // Client should reject this ChunkStateWitness and the error message should mention "shard"
+    // Test chunk validation actor rejects witness with invalid shard ID
     tracing::info!(target: "test", "Processing invalid ChunkStateWitness");
-    let signer = env.clients[0].validator_signer.get();
-    let res = env.clients[0].process_chunk_state_witness(witness, witness_size, None, signer);
-    let error = res.unwrap_err();
-    let error_message = format!("{}", error).to_lowercase();
-    tracing::info!(target: "test", "error message: {}", error_message);
-    assert!(error_message.contains("shard"));
-    assert_matches!(error, near_chain::Error::InvalidShardId(_));
+    let witness_message = ChunkStateWitnessMessage {
+        witness,
+        raw_witness_size: witness_size,
+        processing_done_tracker: None,
+    };
+    let result =
+        env.chunk_validation_actors[0].process_chunk_state_witness_message(witness_message);
+    match result {
+        Err(Error::ValidatorError(err_msg)) => {
+            assert!(
+                err_msg.contains("Invalid shard 1000000000"),
+                "Should reject with invalid shard ID in error message: {}",
+                err_msg
+            );
+        }
+        Ok(()) => panic!("Chunk validation actor should reject witness with invalid shard ID"),
+        Err(other_err) => {
+            panic!("Expected ValidatorError with invalid shard ID, but got: {}", other_err)
+        }
+    }
 }
 
 /// Tests that eth-implicit accounts still work with stateless validation.
@@ -401,11 +417,11 @@ fn test_eth_implicit_accounts() {
     );
 
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(create_alice_tx, false, false),
+        env.rpc_handlers[0].process_tx(create_alice_tx, false, false),
         ProcessTxResponse::ValidTx
     );
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(create_bob_tx, false, false),
+        env.rpc_handlers[0].process_tx(create_bob_tx, false, false),
         ProcessTxResponse::ValidTx
     );
 
@@ -441,9 +457,10 @@ fn test_eth_implicit_accounts() {
         &mut relayer_signer,
         &env,
     );
+    let prepaid_gas = total_prepaid_gas(signed_transaction.transaction.actions()).unwrap();
 
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(signed_transaction, false, false),
+        env.rpc_handlers[0].process_tx(signed_transaction, false, false),
         ProcessTxResponse::ValidTx
     );
 
@@ -468,7 +485,7 @@ fn test_eth_implicit_accounts() {
     );
 
     assert_eq!(
-        env.tx_request_handlers[0].process_tx(signed_transaction, false, false),
+        env.rpc_handlers[0].process_tx(signed_transaction, false, false),
         ProcessTxResponse::ValidTx
     );
 
@@ -479,14 +496,26 @@ fn test_eth_implicit_accounts() {
     let alice_final_balance = view_balance(&env, &alice_eth_account);
     let bob_final_balance = view_balance(&env, &bob_eth_account);
 
+    let tip = env.clients[0].chain.head().unwrap();
+    let runtime_config = env.get_runtime_config(0, tip.epoch_id);
+
+    let gas_price = env.clients[0].chain.block_economics_config.min_gas_price();
+
     // Bob receives the transfer
     assert_eq!(bob_final_balance, bob_init_balance + transfer_amount);
 
-    // The only tokens lost in the transaction are due to gas
-    let gas_cost =
+    // The only tokens lost in the transaction are due to gas and refund penalty
+    let max_gas_cost = ONE_NEAR / 500;
+    let max_refund_cost =
+        u128::from(runtime_config.fees.gas_penalty_for_gas_refund(prepaid_gas).as_gas())
+            * gas_price;
+    let tx_cost =
         (alice_init_balance + bob_init_balance) - (alice_final_balance + bob_final_balance);
-    assert_eq!(alice_final_balance, alice_init_balance - transfer_amount - gas_cost);
-    assert!(gas_cost < ONE_NEAR / 500);
+    assert_eq!(alice_final_balance, alice_init_balance - transfer_amount - tx_cost);
+    assert!(
+        tx_cost < max_refund_cost + max_gas_cost,
+        "{tx_cost} < {max_refund_cost} + {max_gas_cost}"
+    );
 }
 
 /// Produce a block, apply it and propagate it through the network (including state witnesses).

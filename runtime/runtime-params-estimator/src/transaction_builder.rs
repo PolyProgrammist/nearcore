@@ -5,6 +5,7 @@ use near_crypto::{InMemorySigner, KeyType};
 use near_primitives::hash::CryptoHash;
 use near_primitives::transaction::{Action, FunctionCallAction, SignedTransaction};
 use near_primitives::types::AccountId;
+use near_primitives::types::Gas;
 use rand::Rng;
 use rand::prelude::ThreadRng;
 use rand::seq::SliceRandom;
@@ -76,7 +77,7 @@ impl TransactionBuilder {
         let actions = vec![Action::FunctionCall(Box::new(FunctionCallAction {
             method_name: method.to_string(),
             args,
-            gas: 10u64.pow(18),
+            gas: Gas::from_teragas(1_000_000),
             deposit: 0,
         }))];
         self.transaction_from_actions(sender, receiver, actions)
@@ -101,14 +102,14 @@ impl TransactionBuilder {
         self.transaction_from_function_call(account, "account_storage_insert_key", arg)
     }
 
-    pub(crate) fn rng(&mut self) -> ThreadRng {
+    pub(crate) fn rng(&self) -> ThreadRng {
         rand::thread_rng()
     }
 
-    pub(crate) fn account(&mut self, account_index: u64) -> AccountId {
+    pub(crate) fn account(&self, account_index: u64) -> AccountId {
         get_account_id(account_index)
     }
-    pub(crate) fn random_account(&mut self) -> AccountId {
+    pub(crate) fn random_account(&self) -> AccountId {
         let account_index = self.rng().gen_range(0..self.accounts.len());
         self.accounts[account_index].clone()
     }
@@ -122,7 +123,7 @@ impl TransactionBuilder {
         self.unused_index += 1;
         return self.accounts[self.unused_accounts[tmp]].clone();
     }
-    pub(crate) fn random_account_pair(&mut self) -> (AccountId, AccountId) {
+    pub(crate) fn random_account_pair(&self) -> (AccountId, AccountId) {
         let first = self.random_account();
         loop {
             let second = self.random_account();

@@ -2,6 +2,7 @@ use crate::parameter::Parameter;
 use enum_map::{EnumMap, enum_map};
 use near_account_id::AccountType;
 use near_primitives_core::types::{Balance, Compute, Gas};
+use near_primitives_core::version::{PROTOCOL_VERSION, ProtocolFeature};
 use near_schema_checker_lib::ProtocolSchema;
 use num_rational::Rational32;
 
@@ -10,6 +11,7 @@ use num_rational::Rational32;
 /// NOTE: `send_sir` or `send_not_sir` fees are usually burned when the item is being created.
 /// And `execution` fee is burned when the item is being executed.
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Fee {
     /// Fee for sending an object from the sender to itself, guaranteeing that it does not leave
     /// the shard.
@@ -21,6 +23,14 @@ pub struct Fee {
 }
 
 impl Fee {
+    pub fn new(send_sir: u64, send_not_sir: u64, execution: u64) -> Self {
+        Self {
+            send_sir: Gas::from_gas(send_sir),
+            send_not_sir: Gas::from_gas(send_not_sir),
+            execution: Gas::from_gas(execution),
+        }
+    }
+
     #[inline]
     pub fn send_fee(&self, sir: bool) -> Gas {
         if sir { self.send_sir } else { self.send_not_sir }
@@ -32,7 +42,15 @@ impl Fee {
 
     /// The minimum fee to send and execute.
     pub fn min_send_and_exec_fee(&self) -> Gas {
-        std::cmp::min(self.send_sir, self.send_not_sir) + self.execution
+        std::cmp::min(self.send_sir, self.send_not_sir).checked_add(self.execution).unwrap()
+    }
+
+    fn test_value(value: u64) -> Self {
+        Self {
+            send_sir: Gas::from_gas(value),
+            send_not_sir: Gas::from_gas(value),
+            execution: Gas::from_gas(value),
+        }
     }
 }
 
@@ -153,7 +171,7 @@ impl ExtCostsConfig {
             ExtCosts::yield_resume_base => 300_000_000_000_000,
             ExtCosts::yield_resume_byte => 300_000_000_000_000,
         }
-        .map(|_, value| ParameterCost { gas: value, compute: value * factor });
+        .map(|_, value| ParameterCost { gas: Gas::from_gas(value), compute: value * factor });
         ExtCostsConfig { costs }
     }
 
@@ -426,6 +444,26 @@ pub struct RuntimeFeesConfig {
 
     /// Pessimistic gas price inflation ratio.
     pub pessimistic_gas_price_inflation_ratio: Rational32,
+
+    /// Whether we calculate in the gas price changes when refunding gas.
+    ///
+    /// Changed to false with [NEP-536](https://github.com/near/NEPs/pull/536)
+    pub refund_gas_price_changes: bool,
+
+    /// Relative cost for gas refunds as a ratio of the refunded amount.
+    ///
+    /// The actual penalty is
+    /// `max(gross_refund * gas_refund_penalty, min_gas_refund_penalty)`
+    ///
+    /// Added with [NEP-536](https://github.com/near/NEPs/pull/536)
+    pub gas_refund_penalty: Rational32,
+    /// Minimum cost for gas refunds.
+    ///
+    /// The actual penalty is
+    /// `max(gross_refund * gas_refund_penalty, min_gas_refund_penalty)`
+    ///
+    /// Added with [NEP-536](https://github.com/near/NEPs/pull/536)
+    pub min_gas_refund_penalty: Gas,
 }
 
 /// Describes cost of storage per block
@@ -453,107 +491,39 @@ impl RuntimeFeesConfig {
             storage_usage_config: StorageUsageConfig::test(),
             burnt_gas_reward: Rational32::new(3, 10),
             pessimistic_gas_price_inflation_ratio: Rational32::new(103, 100),
+            refund_gas_price_changes: !ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION),
+            gas_refund_penalty: if ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION) {
+                Rational32::new(5, 100)
+            } else {
+                Rational32::new(0, 100)
+            },
+            min_gas_refund_penalty: if ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION)
+            {
+                Gas::from_teragas(1)
+            } else {
+                Gas::ZERO
+            },
             action_fees: enum_map::enum_map! {
-                ActionCosts::create_account => Fee {
-                    send_sir: 3_850_000_000_000,
-                    send_not_sir: 3_850_000_000_000,
-                    execution: 3_850_000_000_000,
-                },
-                ActionCosts::delete_account => Fee {
-                    send_sir: 147489000000,
-                    send_not_sir: 147489000000,
-                    execution: 147489000000,
-                },
-                ActionCosts::deploy_contract_base => Fee {
-                    send_sir: 184765750000,
-                    send_not_sir: 184765750000,
-                    execution: 184765750000,
-                },
-                ActionCosts::deploy_contract_byte => Fee {
-                    send_sir: 6812999,
-                    send_not_sir: 6812999,
-                    execution: 6812999,
-                },
-                ActionCosts::function_call_base => Fee {
-                    send_sir: 2319861500000,
-                    send_not_sir: 2319861500000,
-                    execution: 2319861500000,
-                },
-                ActionCosts::function_call_byte => Fee {
-                    send_sir: 2235934,
-                    send_not_sir: 2235934,
-                    execution: 2235934,
-                },
-                ActionCosts::transfer => Fee {
-                    send_sir: 115123062500,
-                    send_not_sir: 115123062500,
-                    execution: 115123062500,
-                },
-                ActionCosts::stake => Fee {
-                    send_sir: 141715687500,
-                    send_not_sir: 141715687500,
-                    execution: 102217625000,
-                },
-                ActionCosts::add_full_access_key => Fee {
-                    send_sir: 101765125000,
-                    send_not_sir: 101765125000,
-                    execution: 101765125000,
-                },
-                ActionCosts::add_function_call_key_base => Fee {
-                    send_sir: 102217625000,
-                    send_not_sir: 102217625000,
-                    execution: 102217625000,
-                },
-                ActionCosts::add_function_call_key_byte => Fee {
-                    send_sir: 1925331,
-                    send_not_sir: 1925331,
-                    execution: 1925331,
-                },
-                ActionCosts::delete_key => Fee {
-                    send_sir: 94946625000,
-                    send_not_sir: 94946625000,
-                    execution: 94946625000,
-                },
-                ActionCosts::new_action_receipt => Fee {
-                    send_sir: 108059500000,
-                    send_not_sir: 108059500000,
-                    execution: 108059500000,
-                },
-                ActionCosts::new_data_receipt_base => Fee {
-                    send_sir: 4697339419375,
-                    send_not_sir: 4697339419375,
-                    execution: 4697339419375,
-                },
-                ActionCosts::new_data_receipt_byte => Fee {
-                    send_sir: 59357464,
-                    send_not_sir: 59357464,
-                    execution: 59357464,
-                },
-                ActionCosts::delegate => Fee {
-                    send_sir: 200_000_000_000,
-                    send_not_sir: 200_000_000_000,
-                    execution: 200_000_000_000,
-                },
-                ActionCosts::deploy_global_contract_base => Fee {
-                    send_sir: 184_765_750_000,
-                    send_not_sir: 184_765_750_000,
-                    execution: 184_765_750_000,
-                },
-                ActionCosts::deploy_global_contract_byte => Fee {
-                    send_sir: 6_812_999,
-                    send_not_sir: 6_812_999,
-                    execution: 70_000_000,
-                },
-                ActionCosts::use_global_contract_base => Fee {
-                    send_sir: 184_765_750_000,
-                    send_not_sir: 184_765_750_000,
-                    execution: 184_765_750_000,
-                },
-                ActionCosts::use_global_contract_byte => Fee {
-                    send_sir: 6_812_999,
-                    send_not_sir: 47_683_715,
-                    execution: 64_572_944,
-                },
+                ActionCosts::create_account => Fee::test_value(3_850_000_000_000),
+                ActionCosts::delete_account => Fee::test_value(147489000000),
+                ActionCosts::deploy_contract_base => Fee::test_value(184765750000),
+                ActionCosts::deploy_contract_byte => Fee::test_value(6812999),
+                ActionCosts::function_call_base => Fee::test_value(2319861500000),
+                ActionCosts::function_call_byte => Fee::test_value(2235934),
+                ActionCosts::transfer => Fee::test_value(115123062500),
+                ActionCosts::stake => Fee::new(141715687500, 141715687500, 102217625000),
+                ActionCosts::add_full_access_key => Fee::test_value(101765125000),
+                ActionCosts::add_function_call_key_base => Fee::test_value(102217625000),
+                ActionCosts::add_function_call_key_byte => Fee::test_value(1925331),
+                ActionCosts::delete_key => Fee::test_value(94946625000),
+                ActionCosts::new_action_receipt => Fee::test_value(108059500000),
+                ActionCosts::new_data_receipt_base => Fee::test_value(4697339419375),
+                ActionCosts::new_data_receipt_byte => Fee::test_value(59357464),
+                ActionCosts::delegate => Fee::test_value(200_000_000_000),
+                ActionCosts::deploy_global_contract_base => Fee::test_value(184_765_750_000),
+                ActionCosts::deploy_global_contract_byte => Fee::new(6_812_999, 6_812_999, 70_000_000),
+                ActionCosts::use_global_contract_base => Fee::test_value(184_765_750_000),
+                ActionCosts::use_global_contract_byte => Fee::new(6_812_999, 47_683_715, 64_572_944),
             },
         }
     }
@@ -561,11 +531,14 @@ impl RuntimeFeesConfig {
     pub fn free() -> Self {
         Self {
             action_fees: enum_map::enum_map! {
-                _ => Fee { send_sir: 0, send_not_sir: 0, execution: 0 }
+                _ => Fee::new(0, 0, 0)
             },
             storage_usage_config: StorageUsageConfig::free(),
             burnt_gas_reward: Rational32::from_integer(0),
             pessimistic_gas_price_inflation_ratio: Rational32::from_integer(0),
+            refund_gas_price_changes: !ProtocolFeature::ReducedGasRefunds.enabled(PROTOCOL_VERSION),
+            gas_refund_penalty: Rational32::from_integer(0),
+            min_gas_refund_penalty: Gas::ZERO,
         }
     }
 
@@ -574,8 +547,26 @@ impl RuntimeFeesConfig {
     /// This amount is used to determine how many receipts can be created, send and executed for
     /// some amount of prepaid gas using function calls.
     pub fn min_receipt_with_function_call_gas(&self) -> Gas {
-        self.fee(ActionCosts::new_action_receipt).min_send_and_exec_fee()
-            + self.fee(ActionCosts::function_call_base).min_send_and_exec_fee()
+        self.fee(ActionCosts::new_action_receipt)
+            .min_send_and_exec_fee()
+            .checked_add(self.fee(ActionCosts::function_call_base).min_send_and_exec_fee())
+            .unwrap()
+    }
+
+    /// Given a left over gas amount to be refunded, returns how much should be
+    /// subtracted as a penalty introduced with NEP-536.
+    ///
+    /// Must return a value smaller or equal to the `gas_refund` parameter.
+    pub fn gas_penalty_for_gas_refund(&self, gas_refund: Gas) -> Gas {
+        let relative_cost = Gas::from_gas(
+            (u128::from(gas_refund.as_gas()) * *self.gas_refund_penalty.numer() as u128
+                / *self.gas_refund_penalty.denom() as u128)
+                .try_into()
+                .unwrap(),
+        );
+
+        let penalty = std::cmp::max(relative_cost, self.min_gas_refund_penalty);
+        std::cmp::min(penalty, gas_refund)
     }
 }
 
@@ -620,14 +611,14 @@ pub fn transfer_exec_fee(
         (true, false, AccountType::EthImplicitAccount) => transfer_fee,
         // Extra fee for the CreateAccount.
         (true, true, AccountType::EthImplicitAccount) => {
-            transfer_fee + cfg.fee(ActionCosts::create_account).exec_fee()
+            transfer_fee.checked_add(cfg.fee(ActionCosts::create_account).exec_fee()).unwrap()
         }
         // Extra fees for the CreateAccount and AddFullAccessKey.
-        (true, _, AccountType::NearImplicitAccount) => {
-            transfer_fee
-                + cfg.fee(ActionCosts::create_account).exec_fee()
-                + cfg.fee(ActionCosts::add_full_access_key).exec_fee()
-        }
+        (true, _, AccountType::NearImplicitAccount) => transfer_fee
+            .checked_add(cfg.fee(ActionCosts::create_account).exec_fee())
+            .unwrap()
+            .checked_add(cfg.fee(ActionCosts::add_full_access_key).exec_fee())
+            .unwrap(),
     }
 }
 
@@ -648,14 +639,14 @@ pub fn transfer_send_fee(
         // No account will be created, just a regular transfer.
         (true, false, AccountType::EthImplicitAccount) => transfer_fee,
         // Extra fee for the CreateAccount.
-        (true, true, AccountType::EthImplicitAccount) => {
-            transfer_fee + cfg.fee(ActionCosts::create_account).send_fee(sender_is_receiver)
-        }
+        (true, true, AccountType::EthImplicitAccount) => transfer_fee
+            .checked_add(cfg.fee(ActionCosts::create_account).send_fee(sender_is_receiver))
+            .unwrap(),
         // Extra fees for the CreateAccount and AddFullAccessKey.
-        (true, _, AccountType::NearImplicitAccount) => {
-            transfer_fee
-                + cfg.fee(ActionCosts::create_account).send_fee(sender_is_receiver)
-                + cfg.fee(ActionCosts::add_full_access_key).send_fee(sender_is_receiver)
-        }
+        (true, _, AccountType::NearImplicitAccount) => transfer_fee
+            .checked_add(cfg.fee(ActionCosts::create_account).send_fee(sender_is_receiver))
+            .unwrap()
+            .checked_add(cfg.fee(ActionCosts::add_full_access_key).send_fee(sender_is_receiver))
+            .unwrap(),
     }
 }

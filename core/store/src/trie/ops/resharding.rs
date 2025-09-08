@@ -298,6 +298,8 @@ where
     N: Debug,
     V: Debug + HasValueLength,
 {
+    /// Splits the trie, separating entries by the boundary account.
+    /// Leaves the left or right part of the trie, depending on the retain mode.
     fn retain_split_shard(
         &mut self,
         boundary_account: &AccountId,
@@ -312,6 +314,8 @@ where
     V: Debug + HasValueLength,
     T: GenericTrieUpdateRetainInner<'a, N, V>,
 {
+    /// Splits the trie, separating entries by the boundary account.
+    /// Leaves the left or right part of the trie, depending on the retain mode.
     fn retain_split_shard(
         &mut self,
         boundary_account: &AccountId,
@@ -379,6 +383,7 @@ mod tests {
             vec![col::BUFFERED_RECEIPT_GROUPS_QUEUE_ITEM]
                 ..vec![col::BUFFERED_RECEIPT_GROUPS_QUEUE_ITEM + 1],
             vec![col::GLOBAL_CONTRACT_CODE]..vec![col::GLOBAL_CONTRACT_CODE + 1],
+            vec![col::GAS_KEY]..append_key(col::GAS_KEY, &alice_account),
         ];
         assert!(left_intervals.iter().all(|range| range.start < range.end));
         for (actual, expected) in left_intervals.iter().zip_eq(expected_left_intervals.iter()) {
@@ -404,6 +409,7 @@ mod tests {
                 ..vec![col::PROMISE_YIELD_RECEIPT + 1],
             vec![col::BANDWIDTH_SCHEDULER_STATE]..vec![col::BANDWIDTH_SCHEDULER_STATE + 1],
             vec![col::GLOBAL_CONTRACT_CODE]..vec![col::GLOBAL_CONTRACT_CODE + 1],
+            append_key(col::GAS_KEY, &alice_account)..vec![col::GAS_KEY + 1],
         ];
         assert!(right_intervals.iter().all(|range| range.start < range.end));
         for (actual, expected) in right_intervals.iter().zip_eq(expected_right_intervals.iter()) {

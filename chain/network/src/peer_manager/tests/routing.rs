@@ -1,8 +1,9 @@
 use crate::blacklist;
 use crate::broadcast;
 use crate::config::{NetworkConfig, SocketOptions};
+use crate::network_protocol::T2MessageBody;
 use crate::network_protocol::testonly as data;
-use crate::network_protocol::{Encoding, Ping, Pong, RoutedMessageBody, RoutingTableUpdate};
+use crate::network_protocol::{Encoding, Ping, Pong, RoutingTableUpdate};
 use crate::peer;
 use crate::peer::peer_actor::{
     ClosingReason, ConnectionClosedEvent, DROP_DUPLICATED_MESSAGES_PERIOD,
@@ -646,7 +647,7 @@ fn make_configs(
             account_id: None,
         })
         .collect();
-    for config in configs.iter_mut() {
+    for config in &mut configs {
         config.outbound_disabled = !enable_outbound;
         config.peer_store.boot_nodes.clone_from(&boot_nodes);
     }
@@ -791,7 +792,7 @@ async fn max_num_peers_limit() {
 
     tracing::info!(target:"test", "start three nodes with max_num_peers=2");
     let mut configs = make_configs(&chain, rng, 4, 4, false);
-    for config in configs.iter_mut() {
+    for config in &mut configs {
         config.max_num_peers = 2;
         config.ideal_connections_lo = 2;
         config.ideal_connections_hi = 2;
@@ -911,7 +912,7 @@ async fn ttl_and_num_hops() {
     pm.wait_for_routing_table(&[(peer.cfg.id(), vec![peer.cfg.id()])]).await;
 
     for ttl in 0..5 {
-        let msg = RoutedMessageBody::Ping(Ping { nonce: rng.r#gen(), source: peer.cfg.id() });
+        let msg = T2MessageBody::Ping(Ping { nonce: rng.r#gen(), source: peer.cfg.id() }).into();
         let msg = Box::new(peer.routed_message(msg, peer.cfg.id(), ttl, Some(clock.now_utc())));
         peer.send(PeerMessage::Routed(msg.clone())).await;
         // If TTL is <2, then the message will be dropped (at least 2 hops are required).
@@ -933,9 +934,9 @@ async fn ttl_and_num_hops() {
                     _ => None,
                 })
                 .await;
-            assert_eq!(msg.body, got.body);
-            assert_eq!(msg.ttl - 1, got.ttl);
-            assert_eq!(msg.num_hops + 1, got.num_hops);
+            assert_eq!(msg.ttl() - 1, got.ttl());
+            assert_eq!(msg.num_hops() + 1, got.num_hops());
+            assert_eq!(msg.body_owned(), got.body_owned());
         }
     }
 }
@@ -1183,7 +1184,7 @@ async fn archival_node() {
     let chain = Arc::new(data::Chain::make(&mut clock, rng, 10));
 
     let mut configs = make_configs(&chain, rng, 5, 5, false);
-    for config in configs.iter_mut() {
+    for config in &mut configs {
         config.max_num_peers = 3;
         config.ideal_connections_lo = 2;
         config.ideal_connections_hi = 2;

@@ -174,6 +174,7 @@ export interface DebugChunkStatus {
     chunk_producer: string | null;
     gas_used: number;
     processing_time_ms?: number;
+    endorsement_ratio?: number;
 }
 
 export interface EpochInfoView {
@@ -457,7 +458,7 @@ export async function fetchBlockStatus(
 }
 
 export async function fetchEpochInfo(
-    addr: string, 
+    addr: string,
     epochId: string | null
 ): Promise<EpochInfoResponse> {
     const trailing = epochId ? `/${epochId}` : '';

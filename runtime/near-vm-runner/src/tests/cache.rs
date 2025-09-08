@@ -1,6 +1,3 @@
-//! Tests that `ContractRuntimeCache` is working correctly. Currently testing only wasmer code, so disabled outside of x86_64
-#![cfg(target_arch = "x86_64")]
-
 use super::{create_context, test_vm_config, with_vm_variants};
 use crate::cache::{CompiledContractInfo, ContractRuntimeCache};
 use crate::logic::Config;
@@ -19,12 +16,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[test]
 fn test_caches_compilation_error() {
-    let config = Arc::new(test_vm_config());
-    with_vm_variants(&config, |vm_kind: VMKind| {
+    with_vm_variants(|vm_kind: VMKind| {
+        let config = Arc::new(test_vm_config(Some(vm_kind)));
         // The cache is currently properly implemented only for NearVM
         match vm_kind {
-            VMKind::NearVm => {}
-            VMKind::Wasmer0 | VMKind::Wasmer2 | VMKind::Wasmtime => return,
+            VMKind::NearVm | VMKind::NearVm2 | VMKind::Wasmtime => {}
+            VMKind::Wasmer0 | VMKind::Wasmer2 => return,
         }
         let cache = MockContractRuntimeCache::default();
         let code = [42; 1000];
@@ -60,11 +57,11 @@ fn test_caches_compilation_error() {
 
 #[test]
 fn test_does_not_cache_io_error() {
-    let config = Arc::new(test_vm_config());
-    with_vm_variants(&config, |vm_kind: VMKind| {
+    with_vm_variants(|vm_kind: VMKind| {
+        let config = Arc::new(test_vm_config(Some(vm_kind)));
         match vm_kind {
-            VMKind::NearVm => {}
-            VMKind::Wasmer0 | VMKind::Wasmer2 | VMKind::Wasmtime => return,
+            VMKind::NearVm | VMKind::NearVm2 | VMKind::Wasmtime => {}
+            VMKind::Wasmer0 | VMKind::Wasmer2 => return,
         }
 
         let code = near_test_contracts::trivial_contract();
@@ -124,7 +121,7 @@ fn make_cached_contract_call_vm(
     fake_external.code_hash = code_hash;
     let mut context = create_context(vec![]);
     let fees = Arc::new(RuntimeFeesConfig::test());
-    context.prepaid_gas = prepaid_gas;
+    context.prepaid_gas = near_primitives_core::types::Gas::from_gas(prepaid_gas);
     let gas_counter = context.make_gas_counter(&config);
     let runtime = vm_kind.runtime(config).expect("runtime has not been compiled");
     runtime.prepare(&fake_external, Some(cache), gas_counter, method_name).run(
@@ -135,7 +132,7 @@ fn make_cached_contract_call_vm(
 }
 
 #[test]
-#[cfg(feature = "near_vm")]
+#[cfg(all(feature = "near_vm", target_arch = "x86_64"))]
 fn test_near_vm_artifact_output_stability() {
     use crate::near_vm_runner::NearVM;
     use crate::prepare;
@@ -148,30 +145,31 @@ fn test_near_vm_artifact_output_stability() {
     let seeds = [2, 3, 5, 7, 11, 13, 17];
     let prepared_hashes = [
         // See the above comment if you want to change this
-        2827992185785358581,
-        17421797339778310713,
-        16714934007236574397,
-        1884675227101889895,
-        10936343070920321432,
-        10728749071033926115,
-        8212262804128939827,
+        1542805699164428223,
+        11788457774104175832,
+        3048319894555017963,
+        18191640889921116230,
+        15894836194951303355,
+        5539952618394824567,
+        3355749080719995433,
     ];
     let mut got_prepared_hashes = Vec::with_capacity(seeds.len());
     let compiled_hashes = [
         // See the above comment if you want to change this
-        1182021398207161502,
-        905660765117347293,
-        16348151278815489293,
-        4289237417580123383,
-        13920596352648058761,
-        6324750771081683425,
-        4237611324950808774,
+        10359202179711734961,
+        10830978663396839891,
+        4113425387108096249,
+        17915109147814468885,
+        10647100344041648873,
+        4181460672868866599,
+        19820563360826786,
     ];
     let mut got_compiled_hashes = Vec::with_capacity(seeds.len());
     for seed in seeds {
         let contract = ContractCode::new(near_test_contracts::arbitrary_contract(seed), None);
 
-        let config = Arc::new(test_vm_config());
+        let mut config = test_vm_config(Some(VMKind::NearVm));
+        config.reftypes_bulk_memory = false; // FIXME: ProtocolFeature::RefTypesBulkMemory
         let prepared_code =
             prepare::prepare_contract(contract.code(), &config, VMKind::NearVm).unwrap();
         let this_hash = crate::utils::stable_hash((&contract.code(), &prepared_code));
@@ -184,7 +182,7 @@ fn test_near_vm_artifact_output_stability() {
         features.insert(CpuFeature::AVX);
         let triple = "x86_64-unknown-linux-gnu".parse().unwrap();
         let target = Target::new(triple, features);
-        let vm = NearVM::new_for_target(config, target);
+        let vm = NearVM::new_for_target(config.into(), target);
         let artifact = vm.compile_uncached(&contract).unwrap();
         let serialized = artifact.serialize().unwrap();
         let this_hash = crate::utils::stable_hash(&serialized);

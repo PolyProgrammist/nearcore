@@ -19,23 +19,27 @@ use near_primitives::hash::CryptoHash;
 pub use near_primitives::shard_layout::ShardInfo;
 use near_primitives::shard_layout::ShardLayout;
 use near_primitives::stateless_validation::validator_assignment::ChunkValidatorAssignments;
+use near_primitives::types::ProtocolVersion;
 use near_primitives::types::validator_stake::ValidatorStake;
 use near_primitives::types::{
     AccountId, ApprovalStake, Balance, BlockChunkValidatorStats, BlockHeight, ChunkStats, EpochId,
     EpochInfoProvider, ShardId, ValidatorId, ValidatorInfoIdentifier, ValidatorKickoutReason,
     ValidatorStats,
 };
-use near_primitives::version::ProtocolVersion;
+use near_primitives::version::ProtocolFeature;
 use near_primitives::views::{
     CurrentEpochValidatorInfo, EpochValidatorInfo, NextEpochValidatorInfo, ValidatorKickoutView,
 };
 use near_store::adapter::StoreAdapter;
 use near_store::{DBCol, HEADER_HEAD_KEY, Store, StoreUpdate};
 use num_rational::BigRational;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use primitive_types::U256;
 use reward_calculator::ValidatorOnlineThresholds;
+use shard_assignment::build_assignment_restrictions_v77_to_v78;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc;
 use tracing::{debug, warn};
 pub use validator_selection::proposals_to_epoch_info;
 use validator_stats::get_sortable_validator_online_ratio;
@@ -71,11 +75,11 @@ pub struct EpochManagerHandle {
 
 impl EpochManagerHandle {
     pub fn write(&self) -> RwLockWriteGuard<EpochManager> {
-        self.inner.write().unwrap()
+        self.inner.write()
     }
 
     pub fn read(&self) -> RwLockReadGuard<EpochManager> {
-        self.inner.read().unwrap()
+        self.inner.read()
     }
 }
 
@@ -207,6 +211,7 @@ impl EpochManager {
             genesis_config.chain_id.as_str(),
             epoch_length,
             epoch_config_store,
+            genesis_config.protocol_version,
         );
         Arc::new(
             Self::new(store, all_epoch_config, reward_calculator, genesis_config.validators())
@@ -301,7 +306,9 @@ impl EpochManager {
         // Later when we perform the check to kick out validators, we don't kick out validators in
         // exempted_validators.
         let mut exempted_validators = HashSet::new();
-        let min_keep_stake = total_stake * (exempt_perc as u128) / 100;
+        let min_keep_stake = (U256::from(total_stake) * U256::from(exempt_perc as u128)
+            / U256::from(100u128))
+        .as_u128();
         let mut exempted_stake: Balance = 0;
         for account_id in accounts_sorted_by_online_ratio.into_iter().rev() {
             if exempted_stake >= min_keep_stake {
@@ -361,7 +368,7 @@ impl EpochManager {
                 .unwrap_or(&ValidatorStats { expected: 0, produced: 0 })
                 .clone();
             let mut chunk_stats = ChunkStats::default();
-            for (_, tracker) in chunk_stats_tracker.iter() {
+            for (_, tracker) in chunk_stats_tracker {
                 if let Some(stat) = tracker.get(&(i as u64)) {
                     *chunk_stats.expected_mut() += stat.expected();
                     *chunk_stats.produced_mut() += stat.produced();
@@ -421,7 +428,7 @@ impl EpochManager {
         );
         let mut all_kicked_out = true;
         let mut validator_kickout = HashMap::new();
-        for (account_id, stats) in validator_block_chunk_stats.iter() {
+        for (account_id, stats) in &validator_block_chunk_stats {
             if exempted_validators.contains(account_id) {
                 all_kicked_out = false;
                 continue;
@@ -475,7 +482,7 @@ impl EpochManager {
     }
 
     fn collect_blocks_info(
-        &mut self,
+        &self,
         last_block_info: &BlockInfo,
         last_block_hash: &CryptoHash,
     ) -> Result<EpochSummary, EpochError> {
@@ -491,7 +498,6 @@ impl EpochManager {
             ..
         } = self.get_epoch_info_aggregator_upto_last(last_block_hash)?;
         let mut proposals = vec![];
-        let mut validator_kickout = HashMap::new();
 
         let total_block_producer_stake: u128 = epoch_info
             .block_producers_settlement()
@@ -505,14 +511,16 @@ impl EpochManager {
         // Next protocol version calculation.
         // Implements https://github.com/near/NEPs/blob/master/specs/ChainSpec/Upgradability.md
         let mut versions = HashMap::new();
-        for (validator_id, version) in version_tracker {
+        for (validator_id, version) in &version_tracker {
+            let (validator_id, version) = (*validator_id, *version);
             let stake = epoch_info.validator_stake(validator_id);
             *versions.entry(version).or_insert(0) += stake;
         }
         PROTOCOL_VERSION_VOTES.reset();
         for (version, stake) in &versions {
-            let stake_percent = 100 * stake / total_block_producer_stake;
-            let stake_percent = stake_percent as i64;
+            let stake_percent = (U256::from(*stake) * U256::from(100u128)
+                / U256::from(total_block_producer_stake))
+            .as_u128() as i64;
             PROTOCOL_VERSION_VOTES.with_label_values(&[&version.to_string()]).set(stake_percent);
             tracing::info!(target: "epoch_manager", ?version, ?stake_percent, "Protocol version voting.");
         }
@@ -527,7 +535,9 @@ impl EpochManager {
         {
             let numer = *config.protocol_upgrade_stake_threshold.numer() as u128;
             let denom = *config.protocol_upgrade_stake_threshold.denom() as u128;
-            let threshold = total_block_producer_stake * numer / denom;
+            let threshold = (U256::from(total_block_producer_stake) * U256::from(numer)
+                / U256::from(denom))
+            .as_u128();
             if stake > threshold { version } else { protocol_version }
         } else {
             protocol_version
@@ -536,6 +546,24 @@ impl EpochManager {
         PROTOCOL_VERSION_NEXT.set(next_next_epoch_version as i64);
         tracing::info!(target: "epoch_manager", ?next_next_epoch_version, "Protocol version voting.");
 
+        let mut validator_kickout = HashMap::new();
+
+        // Kickout validators voting for an old version.
+        for (validator_id, version) in version_tracker {
+            if version >= next_next_epoch_version {
+                continue;
+            }
+            let validator = epoch_info.get_validator(validator_id);
+            validator_kickout.insert(
+                validator.take_account_id(),
+                ValidatorKickoutReason::ProtocolVersionTooOld {
+                    version,
+                    network_version: next_next_epoch_version,
+                },
+            );
+        }
+
+        // Kickout unstaked validators.
         for (account_id, proposal) in all_proposals {
             if proposal.stake() == 0
                 && *next_epoch_info.stake_change().get(&account_id).unwrap_or(&0) != 0
@@ -576,7 +604,7 @@ impl EpochManager {
 
     /// Finalizes epoch (T), where given last block hash is given, and returns next next epoch id (T + 2).
     fn finalize_epoch(
-        &mut self,
+        &self,
         store_update: &mut StoreUpdate,
         block_info: &BlockInfo,
         last_block_hash: &CryptoHash,
@@ -606,7 +634,7 @@ impl EpochManager {
             assert!(block_info.timestamp_nanosec() > last_block_in_last_epoch.timestamp_nanosec());
             let epoch_duration =
                 block_info.timestamp_nanosec() - last_block_in_last_epoch.timestamp_nanosec();
-            for (account_id, reason) in validator_kickout.iter() {
+            for (account_id, reason) in &validator_kickout {
                 if matches!(
                     reason,
                     ValidatorKickoutReason::NotEnoughBlocks { .. }
@@ -639,6 +667,18 @@ impl EpochManager {
         let next_epoch_version = next_epoch_info.protocol_version();
         let next_shard_layout = self.config.for_protocol_version(next_epoch_version).shard_layout;
         let has_same_shard_layout = next_shard_layout == next_next_epoch_config.shard_layout;
+
+        let next_epoch_v6 = ProtocolFeature::SimpleNightshadeV6.enabled(next_epoch_version);
+        let next_next_epoch_v6 =
+            ProtocolFeature::SimpleNightshadeV6.enabled(next_next_epoch_version);
+        let chunk_producer_assignment_restrictions =
+            (!next_epoch_v6 && next_next_epoch_v6).then(|| {
+                build_assignment_restrictions_v77_to_v78(
+                    &next_epoch_info,
+                    &next_shard_layout,
+                    next_next_epoch_config.shard_layout.clone(),
+                )
+            });
         let next_next_epoch_info = match proposals_to_epoch_info(
             &next_next_epoch_config,
             rng_seed,
@@ -649,6 +689,7 @@ impl EpochManager {
             minted_amount,
             next_next_epoch_version,
             has_same_shard_layout,
+            chunk_producer_assignment_restrictions,
         ) {
             Ok(next_next_epoch_info) => next_next_epoch_info,
             Err(EpochError::ThresholdError { stake_sum, num_seats }) => {
@@ -1089,7 +1130,7 @@ impl EpochManager {
                         let mut chunks_stats_by_shard: HashMap<ShardId, ChunkStats> =
                             HashMap::new();
                         let mut chunk_stats = ChunkStats::default();
-                        for (shard, tracker) in aggregator.shard_tracker.iter() {
+                        for (shard, tracker) in &aggregator.shard_tracker {
                             if let Some(stats) = tracker.get(&(validator_id as u64)) {
                                 let produced = stats.produced();
                                 let expected = stats.expected();
@@ -1338,7 +1379,7 @@ impl EpochManager {
     }
 
     fn save_epoch_info(
-        &mut self,
+        &self,
         store_update: &mut StoreUpdate,
         epoch_id: &EpochId,
         epoch_info: Arc<EpochInfo>,
@@ -1383,7 +1424,7 @@ impl EpochManager {
     }
 
     fn save_block_info(
-        &mut self,
+        &self,
         store_update: &mut StoreUpdate,
         block_info: Arc<BlockInfo>,
     ) -> Result<(), EpochError> {
@@ -1394,7 +1435,7 @@ impl EpochManager {
     }
 
     fn save_epoch_start(
-        &mut self,
+        &self,
         store_update: &mut StoreUpdate,
         epoch_id: &EpochId,
         epoch_start: BlockHeight,

@@ -55,8 +55,10 @@ static CONFIG_DIFFS: &[(ProtocolVersion, &str)] = &[
     (73, include_config!("73.yaml")),
     (74, include_config!("74.yaml")),
     (77, include_config!("77.yaml")),
+    (78, include_config!("78.yaml")),
+    (79, include_config!("79.yaml")),
+    (81, include_config!("81.yaml")),
     (129, include_config!("129.yaml")),
-    (149, include_config!("149.yaml")),
 ];
 
 /// Testnet parameters for versions <= 29, which (incorrectly) differed from mainnet parameters
@@ -250,12 +252,24 @@ impl RuntimeConfigStore {
             })
             .1
     }
+
+    /// Returns a mutable borrow of `RuntimeConfig` for the corresponding protocol version.
+    pub fn get_config_mut(&mut self, protocol_version: ProtocolVersion) -> &mut Arc<RuntimeConfig> {
+        self.store
+            .range_mut((Bound::Unbounded, Bound::Included(protocol_version)))
+            .next_back()
+            .unwrap_or_else(|| {
+                panic!("Not found RuntimeConfig for protocol version {}", protocol_version)
+            })
+            .1
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cost::ActionCosts;
+    use near_primitives_core::types::Gas;
     use std::collections::HashSet;
 
     const GENESIS_PROTOCOL_VERSION: ProtocolVersion = 29;
@@ -331,7 +345,10 @@ mod tests {
         let modified_config = RuntimeConfig::new(&base_params).unwrap();
 
         assert_eq!(modified_config.wasm_config.limit_config.max_length_storage_key, 42);
-        assert_eq!(modified_config.fees.fee(ActionCosts::new_action_receipt).send_sir, 100000000);
+        assert_eq!(
+            modified_config.fees.fee(ActionCosts::new_action_receipt).send_sir,
+            Gas::from_gas(100000000)
+        );
 
         assert_eq!(
             base_config.storage_amount_per_byte(),
@@ -408,7 +425,7 @@ mod tests {
     #[cfg(feature = "calimero_zero_storage")]
     fn test_calimero_storage_costs_zero() {
         let store = RuntimeConfigStore::new(None);
-        for (_, config) in store.store.iter() {
+        for (_, config) in &store.store {
             assert_eq!(config.storage_amount_per_byte(), 0u128);
         }
     }
@@ -417,6 +434,6 @@ mod tests {
     fn test_benchmarknet_config() {
         let store = RuntimeConfigStore::for_chain_id(near_primitives_core::chains::BENCHMARKNET);
         let config = store.get_config(PROTOCOL_VERSION);
-        assert_eq!(config.witness_config.main_storage_proof_size_soft_limit, usize::MAX);
+        assert_eq!(config.witness_config.main_storage_proof_size_soft_limit, u64::MAX);
     }
 }

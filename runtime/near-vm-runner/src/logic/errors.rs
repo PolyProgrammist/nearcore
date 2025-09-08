@@ -41,7 +41,7 @@ pub enum VMRunnerError {
 /// See the doc comment on `VMResult` for an explanation what the difference
 /// between this and a `VMRunnerError` is. And see `PartialExecutionStatus`
 /// for what gets stored on chain.
-#[derive(Debug, PartialEq, Eq, strum::IntoStaticStr)]
+#[derive(Clone, Debug, PartialEq, Eq, strum::IntoStaticStr)]
 pub enum FunctionCallError {
     /// Wasm compilation error
     CompilationError(CompilationError),
@@ -99,53 +99,61 @@ pub enum MethodResolveError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize, strum::IntoStaticStr)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum CompilationError {
     CodeDoesNotExist {
         account_id: Box<str>,
-    },
-    PrepareError(PrepareError),
+    } = 0,
+    PrepareError(PrepareError) = 1,
     /// This is for defense in depth.
     /// We expect our runtime-independent preparation code to fully catch all invalid wasms,
     /// but, if it ever misses something we’ll emit this error
     WasmerCompileError {
         msg: String,
-    },
+    } = 2,
     /// This is for defense in depth.
     /// We expect our runtime-independent preparation code to fully catch all invalid wasms,
     /// but, if it ever misses something we’ll emit this error
     WasmtimeCompileError {
         msg: String,
-    },
+    } = 3,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, BorshDeserialize, BorshSerialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 /// Error that can occur while preparing or executing Wasm smart-contract.
 pub enum PrepareError {
     /// Error happened while serializing the module.
-    Serialization,
+    Serialization = 0,
     /// Error happened while deserializing the module.
-    Deserialization,
+    Deserialization = 1,
     /// Internal memory declaration has been found in the module.
-    InternalMemoryDeclared,
+    InternalMemoryDeclared = 2,
     /// Gas instrumentation failed.
     ///
     /// This most likely indicates the module isn't valid.
-    GasInstrumentation,
+    GasInstrumentation = 3,
     /// Stack instrumentation failed.
     ///
     /// This  most likely indicates the module isn't valid.
-    StackHeightInstrumentation,
+    StackHeightInstrumentation = 4,
     /// Error happened during instantiation.
     ///
     /// This might indicate that `start` function trapped, or module isn't
     /// instantiable and/or un-linkable.
-    Instantiate,
+    Instantiate = 5,
     /// Error creating memory.
-    Memory,
+    Memory = 6,
     /// Contract contains too many functions.
-    TooManyFunctions,
+    TooManyFunctions = 7,
     /// Contract contains too many locals.
-    TooManyLocals,
+    TooManyLocals = 8,
+    /// Contract contains too many tables.
+    TooManyTables = 9,
+    /// Contract contains too many table elements.
+    TooManyTableElements = 10,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, strum::IntoStaticStr)]
@@ -276,6 +284,8 @@ pub enum HostError {
     RecordedStorageExceeded {
         limit: ByteSize,
     },
+    /// Contract code hash is malformed.
+    ContractCodeHashMalformed,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -356,6 +366,8 @@ impl fmt::Display for PrepareError {
             Memory => "Error creating memory.",
             TooManyFunctions => "Too many functions in contract.",
             TooManyLocals => "Too many locals declared in the contract.",
+            TooManyTables => "Too many tables declared in the contract.",
+            TooManyTableElements => "Too many table elements declared in the contract.",
         })
     }
 }
@@ -519,6 +531,7 @@ impl std::fmt::Display for HostError {
                 "Size of the recorded trie storage proof has exceeded the allowed limit ({})",
                 limit
             ),
+            ContractCodeHashMalformed => write!(f, "contract code hash is malformed"),
         }
     }
 }

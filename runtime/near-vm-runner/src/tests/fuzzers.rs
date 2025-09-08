@@ -53,7 +53,7 @@ pub fn create_context(input: Vec<u8>) -> VMContext {
         account_locked_balance: 0,
         storage_usage: 12,
         attached_deposit: 2u128,
-        prepaid_gas: 10_u64.pow(14),
+        prepaid_gas: near_primitives_core::types::Gas::from_teragas(100),
         random_seed: vec![0, 1, 2],
         view_config: None,
         output_data_receivers: vec![],
@@ -65,8 +65,8 @@ fn run_fuzz(code: &ContractCode, vm_kind: VMKind) -> VMResult {
     let mut fake_external = MockedExternal::with_code(code.clone_for_tests());
     let method_name = find_entry_point(code).unwrap_or_else(|| "main".to_string());
     let mut context = create_context(vec![]);
-    context.prepaid_gas = 10u64.pow(14);
-    let config = test_vm_config();
+    context.prepaid_gas = near_primitives_core::types::Gas::from_teragas(100);
+    let config = test_vm_config(Some(vm_kind));
     let fees = Arc::new(RuntimeFeesConfig::test());
     let gas_counter = context.make_gas_counter(&config);
     let mut res = vm_kind
@@ -93,7 +93,7 @@ fn run_fuzz(code: &ContractCode, vm_kind: VMKind) -> VMResult {
 #[test]
 #[cfg(feature = "prepare")]
 fn slow_test_current_vm_does_not_crash_fuzzer() {
-    let config = test_vm_config();
+    let config = test_vm_config(None);
     if config.vm_kind.is_available() {
         bolero::check!().with_arbitrary::<ArbitraryModule>().for_each(
             |module: &ArbitraryModule| {
@@ -124,7 +124,7 @@ fn slow_test_near_vm_is_reproducible_fuzzer() {
 
     bolero::check!().with_arbitrary::<ArbitraryModule>().for_each(|module: &ArbitraryModule| {
         let code = ContractCode::new(module.0.to_bytes(), None);
-        let config = std::sync::Arc::new(test_vm_config());
+        let config = std::sync::Arc::new(test_vm_config(Some(VMKind::NearVm)));
         let mut first_hash = None;
         for _ in 0..3 {
             let vm = NearVM::new(config.clone());
@@ -134,6 +134,31 @@ fn slow_test_near_vm_is_reproducible_fuzzer() {
             };
             let code = exec.serialize().unwrap();
             let hash = CryptoHash::hash_bytes(&code);
+            match first_hash {
+                None => first_hash = Some(hash),
+                Some(h) => assert_eq!(h, hash),
+            }
+        }
+    })
+}
+
+#[test]
+#[cfg(feature = "wasmtime_vm")]
+fn slow_test_wasmtime_vm_is_reproducible_fuzzer() {
+    use crate::wasmtime_runner::WasmtimeVM;
+    use near_primitives_core::hash::CryptoHash;
+
+    bolero::check!().with_arbitrary::<ArbitraryModule>().for_each(|module: &ArbitraryModule| {
+        let code = ContractCode::new(module.0.to_bytes(), None);
+        let config = Arc::new(test_vm_config(Some(VMKind::Wasmtime)));
+        let mut first_hash = None;
+        for _ in 0..3 {
+            let vm = WasmtimeVM::new(config.clone());
+            let exec = match vm.compile_uncached(&code) {
+                Ok(e) => e,
+                Err(_) => return,
+            };
+            let hash = CryptoHash::hash_bytes(&exec);
             match first_hash {
                 None => first_hash = Some(hash),
                 Some(h) => assert_eq!(h, hash),

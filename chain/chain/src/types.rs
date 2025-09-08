@@ -3,6 +3,7 @@ use near_async::time::{Duration, Utc};
 use near_chain_configs::GenesisConfig;
 use near_chain_configs::MutableConfigValue;
 use near_chain_configs::ProtocolConfig;
+use near_chain_configs::ProtocolVersionCheckConfig;
 use near_chain_configs::ReshardingConfig;
 use near_chain_primitives::Error;
 pub use near_epoch_manager::EpochManagerAdapter;
@@ -23,7 +24,7 @@ use near_primitives::receipt::{PromiseYieldTimeout, Receipt};
 use near_primitives::sandbox::state_patch::SandboxStatePatch;
 use near_primitives::shard_layout::ShardLayout;
 use near_primitives::shard_layout::ShardUId;
-use near_primitives::state_part::PartId;
+use near_primitives::state_part::{PartId, StatePart};
 use near_primitives::stateless_validation::contract_distribution::ContractUpdates;
 use near_primitives::transaction::ValidatedTransaction;
 use near_primitives::transaction::{ExecutionOutcomeWithId, SignedTransaction};
@@ -107,8 +108,7 @@ pub struct ApplyChunkResult {
     /// version and Some otherwise.
     pub congestion_info: Option<CongestionInfo>,
     /// Requests for bandwidth to send receipts to other shards.
-    /// Will be None for protocol versions that don't have the BandwidthScheduler feature enabled.
-    pub bandwidth_requests: Option<BandwidthRequests>,
+    pub bandwidth_requests: BandwidthRequests,
     /// Used only for a sanity check.
     pub bandwidth_scheduler_state_hash: CryptoHash,
     /// Contracts accessed and deployed while applying the chunk.
@@ -126,7 +126,7 @@ impl ApplyChunkResult {
         outcomes: &[ExecutionOutcomeWithId],
     ) -> (MerkleHash, Vec<MerklePath>) {
         let mut result = Vec::with_capacity(outcomes.len());
-        for outcome_with_id in outcomes.iter() {
+        for outcome_with_id in outcomes {
             result.push(outcome_with_id.to_hashes());
         }
         merklize(&result)
@@ -199,22 +199,28 @@ pub struct ChainGenesis {
 pub struct ChainConfig {
     /// Whether to save `TrieChanges` on disk or not.
     pub save_trie_changes: bool,
+    /// Whether to persist transaction outcomes on disk or not.
+    pub save_tx_outcomes: bool,
     /// Number of threads to execute background migration work.
     /// Currently used for flat storage background creation.
     pub background_migration_threads: usize,
     /// The resharding configuration.
     pub resharding_config: MutableConfigValue<ReshardingConfig>,
+    /// The epoch to check for protocol version compatibility.
+    pub protocol_version_check: ProtocolVersionCheckConfig,
 }
 
 impl ChainConfig {
     pub fn test() -> Self {
         Self {
             save_trie_changes: true,
+            save_tx_outcomes: true,
             background_migration_threads: 1,
             resharding_config: MutableConfigValue::new(
-                ReshardingConfig::default(),
+                ReshardingConfig::test(),
                 "resharding_config",
             ),
+            protocol_version_check: Default::default(),
         }
     }
 }
@@ -238,6 +244,7 @@ impl ChainGenesis {
     }
 }
 
+#[derive(Clone)]
 pub enum StorageDataSource {
     /// Full state data is present in DB.
     Db,
@@ -251,6 +258,7 @@ pub enum StorageDataSource {
     Recorded(PartialStorage),
 }
 
+#[derive(Clone)]
 pub struct RuntimeStorageConfig {
     pub state_root: StateRoot,
     pub use_flat_storage: bool,
@@ -282,10 +290,16 @@ impl RuntimeStorageConfig {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum BlockType {
+    Normal,
+    Optimistic,
+}
+
 #[derive(Clone)]
 pub struct ApplyChunkBlockContext {
+    pub block_type: BlockType,
     pub height: BlockHeight,
-    pub block_hash: CryptoHash,
     pub prev_block_hash: CryptoHash,
     pub block_timestamp: u64,
     pub gas_price: Balance,
@@ -302,8 +316,8 @@ impl ApplyChunkBlockContext {
         bandwidth_requests: BlockBandwidthRequests,
     ) -> Self {
         Self {
+            block_type: BlockType::Normal,
             height: header.height(),
-            block_hash: *header.hash(),
             prev_block_hash: *header.prev_hash(),
             block_timestamp: header.raw_timestamp(),
             gas_price,
@@ -360,10 +374,6 @@ impl From<&Block> for PrepareTransactionsBlockContext {
             congestion_info: block.block_congestion_info(),
         }
     }
-}
-pub struct PrepareTransactionsChunkContext {
-    pub shard_id: ShardId,
-    pub gas_limit: Gas,
 }
 
 /// Bridge between the chain and the runtime.
@@ -427,7 +437,7 @@ pub trait RuntimeAdapter: Send + Sync {
     fn prepare_transactions(
         &self,
         storage: RuntimeStorageConfig,
-        chunk: PrepareTransactionsChunkContext,
+        shard_id: ShardId,
         prev_block: PrepareTransactionsBlockContext,
         transaction_groups: &mut dyn TransactionGroupIterator,
         chain_validate: &dyn Fn(&SignedTransaction) -> bool,
@@ -476,11 +486,18 @@ pub trait RuntimeAdapter: Send + Sync {
         prev_hash: &CryptoHash,
         state_root: &StateRoot,
         part_id: PartId,
-    ) -> Result<Vec<u8>, Error>;
+    ) -> Result<StatePart, Error>;
 
     /// Validate state part that expected to be given state root with provided data.
     /// Returns false if the resulting part doesn't match the expected one.
-    fn validate_state_part(&self, state_root: &StateRoot, part_id: PartId, data: &[u8]) -> bool;
+    /// TODO(cloud_archival) #14124 newtype for validated state parts
+    fn validate_state_part(
+        &self,
+        shard_id: ShardId,
+        state_root: &StateRoot,
+        part_id: PartId,
+        part: &StatePart,
+    ) -> bool;
 
     /// Should be executed after accepting all the parts to set up a new state.
     fn apply_state_part(
@@ -488,7 +505,7 @@ pub trait RuntimeAdapter: Send + Sync {
         shard_id: ShardId,
         state_root: &StateRoot,
         part_id: PartId,
-        part: &[u8],
+        part: &StatePart,
         epoch_id: &EpochId,
     ) -> Result<(), Error>;
 
@@ -555,7 +572,7 @@ mod tests {
             vec![Trie::EMPTY_ROOT],
             vec![Default::default(); shard_ids.len()],
             &shard_ids,
-            1_000_000,
+            Gas::from_gas(1_000_000),
             0,
             PROTOCOL_VERSION,
         );
@@ -588,7 +605,7 @@ mod tests {
                 status: ExecutionStatus::Unknown,
                 logs: vec!["outcome1".to_string()],
                 receipt_ids: vec![hash(&[1])],
-                gas_burnt: 100,
+                gas_burnt: Gas::from_gas(100),
                 compute_usage: Some(200),
                 tokens_burnt: 10000,
                 executor_id: "alice".parse().unwrap(),
@@ -601,7 +618,7 @@ mod tests {
                 status: ExecutionStatus::SuccessValue(vec![1]),
                 logs: vec!["outcome2".to_string()],
                 receipt_ids: vec![],
-                gas_burnt: 0,
+                gas_burnt: Gas::ZERO,
                 compute_usage: Some(0),
                 tokens_burnt: 0,
                 executor_id: "bob".parse().unwrap(),

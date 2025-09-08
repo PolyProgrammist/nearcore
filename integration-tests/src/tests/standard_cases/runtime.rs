@@ -98,6 +98,12 @@ fn test_nonce_updated_when_tx_failed_runtime() {
 }
 
 #[test]
+fn test_regression_nonce_update_with_mixed_transactions_runtime() {
+    let node = create_runtime_node();
+    test_regression_nonce_update_with_mixed_transactions(node);
+}
+
+#[test]
 fn test_upload_contract_runtime() {
     let node = create_runtime_node();
     test_upload_contract(node);
@@ -147,6 +153,12 @@ fn test_trying_to_create_eth_implicit_account_runtime() {
 fn test_smart_contract_reward_runtime() {
     let node = create_runtime_node();
     test_smart_contract_reward(node);
+}
+
+#[test]
+fn test_transaction_invalid_signature_runtime() {
+    let node = create_runtime_node();
+    test_transaction_invalid_signature(node);
 }
 
 #[test]
@@ -338,27 +350,27 @@ fn test_contract_write_key_value_cost_runtime() {
 #[test]
 fn test_accounting_cache_same_common_parent() {
     let node = create_runtime_node();
-    let runtime_config = node.client.as_ref().read().unwrap().runtime_config.clone();
+    let runtime_config = node.client.as_ref().read().runtime_config.clone();
     test_accounting_cache_common_parent(node, runtime_config);
 }
 
 #[test]
 fn test_accounting_cache_branch_value_runtime() {
     let node = create_runtime_node();
-    let runtime_config = node.client.as_ref().read().unwrap().runtime_config.clone();
+    let runtime_config = node.client.as_ref().read().runtime_config.clone();
     test_accounting_cache_branch_value(node, runtime_config);
 }
 
 #[test]
 fn test_accounting_cache_mode_runtime() {
     let node = create_runtime_node();
-    let runtime_config = node.client.as_ref().read().unwrap().runtime_config.clone();
+    let runtime_config = node.client.as_ref().read().runtime_config.clone();
     test_accounting_cache_mode(node, runtime_config);
 }
 
 #[test]
 fn test_storage_read_write_costs_runtime() {
     let node = create_runtime_node();
-    let runtime_config = node.client.as_ref().read().unwrap().runtime_config.clone();
+    let runtime_config = node.client.as_ref().read().runtime_config.clone();
     test_storage_read_write_costs(node, runtime_config);
 }

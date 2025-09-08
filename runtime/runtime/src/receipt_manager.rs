@@ -1,18 +1,18 @@
 use near_crypto::PublicKey;
 use near_primitives::action::{
     Action, AddKeyAction, CreateAccountAction, DeleteAccountAction, DeleteKeyAction,
-    DeployContractAction, FunctionCallAction, StakeAction, TransferAction,
+    DeployContractAction, DeployGlobalContractAction, FunctionCallAction, StakeAction,
+    TransferAction, UseGlobalContractAction,
 };
-use near_primitives::errors::RuntimeError;
+use near_primitives::errors::{IntegerOverflowError, RuntimeError};
 use near_primitives::receipt::DataReceiver;
 use near_primitives_core::account::{AccessKey, AccessKeyPermission, FunctionCallPermission};
 use near_primitives_core::hash::CryptoHash;
 use near_primitives_core::types::{AccountId, Balance, Gas, GasWeight, Nonce};
 use near_vm_runner::logic::HostError;
 use near_vm_runner::logic::VMLogicError;
+use near_vm_runner::logic::types::{GlobalContractDeployMode, GlobalContractIdentifier};
 use std::collections::HashMap;
-
-use crate::config::safe_add_gas;
 
 /// near_vm_runner::types is not public.
 type ReceiptIndex = u64;
@@ -241,6 +241,71 @@ impl ReceiptManager {
         Ok(())
     }
 
+    /// Attach the [`DeployGlobalContractAction`] action to an existing receipt.
+    ///
+    /// # Arguments
+    ///
+    /// * `receipt_index` - an index of Receipt to append an action
+    /// * `code` - a Wasm code to attach
+    /// * `mode` - contract deploy mode
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `receipt_index` does not refer to a known receipt.
+    pub(super) fn append_action_deploy_global_contract(
+        &mut self,
+        receipt_index: ReceiptIndex,
+        code: Vec<u8>,
+        mode: GlobalContractDeployMode,
+    ) -> Result<(), VMLogicError> {
+        let deploy_mode = match mode {
+            GlobalContractDeployMode::CodeHash => {
+                near_primitives::action::GlobalContractDeployMode::CodeHash
+            }
+            GlobalContractDeployMode::AccountId => {
+                near_primitives::action::GlobalContractDeployMode::AccountId
+            }
+        };
+        self.append_action(
+            receipt_index,
+            Action::DeployGlobalContract(DeployGlobalContractAction {
+                code: code.into(),
+                deploy_mode,
+            }),
+        );
+        Ok(())
+    }
+
+    /// Attach the [`UseGlobalContractAction`] action to an existing receipt.
+    ///
+    /// # Arguments
+    ///
+    /// * `receipt_index` - an index of Receipt to append an action
+    /// * `contract_id` - identifier of the contract to use
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `receipt_index` does not refer to a known receipt.
+    pub(super) fn append_use_deploy_global_contract(
+        &mut self,
+        receipt_index: ReceiptIndex,
+        contract_id: GlobalContractIdentifier,
+    ) -> Result<(), VMLogicError> {
+        let contract_identifier = match contract_id {
+            GlobalContractIdentifier::CodeHash(code_hash) => {
+                near_primitives::action::GlobalContractIdentifier::CodeHash(code_hash)
+            }
+            GlobalContractIdentifier::AccountId(account_id) => {
+                near_primitives::action::GlobalContractIdentifier::AccountId(account_id)
+            }
+        };
+        self.append_action(
+            receipt_index,
+            Action::UseGlobalContract(Box::new(UseGlobalContractAction { contract_identifier })),
+        );
+        Ok(())
+    }
+
     /// Attach the [`FunctionCallAction`] action to an existing receipt.
     ///
     /// `prepaid_gas` and `gas_weight` can either be specified or both. If a `gas_weight` is
@@ -463,8 +528,8 @@ impl ReceiptManager {
             promise_yield_receipt_index: _,
         } = self;
         let gas_weight_sum: u128 = gas_weights.iter().map(|(_, gv)| u128::from(gv.0)).sum();
-        if gas_weight_sum == 0 || unused_gas == 0 {
-            return Ok(0);
+        if gas_weight_sum == 0 || unused_gas == Gas::ZERO {
+            return Ok(Gas::ZERO);
         }
         let mut distributed = 0u64;
         let mut gas_weight_iterator = gas_weights.iter().peekable();
@@ -479,21 +544,24 @@ impl ReceiptManager {
                     "Invalid function call index (promise_index={receipt_index}, action_index={action_index})",
                 );
             };
-            let to_assign = (unused_gas as u128 * weight.0 as u128 / gas_weight_sum) as u64;
-            action.gas = safe_add_gas(action.gas, to_assign)?;
+            let to_assign =
+                (u128::from(unused_gas.as_gas()) * weight.0 as u128 / gas_weight_sum) as u64;
+            action.gas =
+                action.gas.checked_add(Gas::from_gas(to_assign)).ok_or(IntegerOverflowError)?;
             distributed = distributed
                 .checked_add(to_assign)
                 .unwrap_or_else(|| panic!("gas computation overflowed"));
             if gas_weight_iterator.peek().is_none() {
-                let remainder = unused_gas.wrapping_sub(distributed);
+                let remainder = unused_gas.as_gas().wrapping_sub(distributed);
                 distributed = distributed
                     .checked_add(remainder)
                     .unwrap_or_else(|| panic!("gas computation overflowed"));
-                action.gas = safe_add_gas(action.gas, remainder)?;
+                action.gas =
+                    action.gas.checked_add(Gas::from_gas(remainder)).ok_or(IntegerOverflowError)?;
             }
         }
-        assert_eq!(unused_gas, distributed);
-        Ok(distributed)
+        assert_eq!(unused_gas.as_gas(), distributed);
+        Ok(Gas::from_gas(distributed))
     }
 }
 
@@ -504,7 +572,7 @@ mod tests {
 
     #[track_caller]
     fn function_call_weight_verify(function_calls: &[(Gas, u64, Gas)], after_distribute: bool) {
-        let mut gas_limit = 10_000_000_000u64;
+        let mut gas_limit = Gas::from_gigagas(10);
 
         // Schedule all function calls
         let mut receipt_manager = super::ReceiptManager::default();
@@ -532,21 +600,22 @@ mod tests {
         };
 
         // Assert expected amount of gas was associated with the action
-        let mut function_call_gas = 0;
+        let mut function_call_gas = Gas::ZERO;
         let mut function_calls_iter = function_calls.iter();
         for receipt in receipt_manager.action_receipts {
             for action in receipt.actions {
                 if let Action::FunctionCall(function_call_action) = action {
                     let reference = function_calls_iter.next().unwrap();
                     assert_eq!(function_call_action.gas, accessor(reference));
-                    function_call_gas += function_call_action.gas;
+                    function_call_gas =
+                        function_call_gas.checked_add(function_call_action.gas).unwrap();
                 }
             }
         }
 
         if after_distribute {
             // Verify that all gas was consumed (assumes at least one ratio is provided)
-            assert_eq!(function_call_gas, 10_000_000_000u64);
+            assert_eq!(function_call_gas.as_gas(), 10_000_000_000u64);
         }
     }
 
@@ -562,43 +631,55 @@ mod tests {
         // and the gas limit is `10_000_000_000`
 
         // Single function call
-        function_call_weight_check(&[(0, 1, 10_000_000_000)]);
+        function_call_weight_check(&[(Gas::ZERO, 1, Gas::from_gigagas(10))]);
 
         // Single function with static gas
-        function_call_weight_check(&[(888, 1, 10_000_000_000)]);
+        function_call_weight_check(&[(Gas::from_gas(888), 1, Gas::from_gigagas(10))]);
 
         // Large weight
-        function_call_weight_check(&[(0, 88888, 10_000_000_000)]);
+        function_call_weight_check(&[(Gas::ZERO, 88888, Gas::from_gigagas(10))]);
 
         // Weight larger than gas limit
-        function_call_weight_check(&[(0, 11u64.pow(14), 10_000_000_000)]);
+        function_call_weight_check(&[(Gas::ZERO, 11u64.pow(14), Gas::from_gigagas(10))]);
 
         // Split two
-        function_call_weight_check(&[(0, 3, 6_000_000_000), (0, 2, 4_000_000_000)]);
+        function_call_weight_check(&[
+            (Gas::ZERO, 3, Gas::from_gigagas(6)),
+            (Gas::ZERO, 2, Gas::from_gigagas(4)),
+        ]);
 
         // Split two with static gas
-        function_call_weight_check(&[(1_000_000, 3, 5_998_600_000), (3_000_000, 2, 4_001_400_000)]);
+        function_call_weight_check(&[
+            (Gas::from_gas(1_000_000), 3, Gas::from_gas(5_998_600_000)),
+            (Gas::from_gas(3_000_000), 2, Gas::from_gas(4_001_400_000)),
+        ]);
 
         // Many different gas weights
         function_call_weight_check(&[
-            (1_000_000, 3, 2_699_800_000),
-            (3_000_000, 2, 1_802_200_000),
-            (0, 1, 899_600_000),
-            (1_000_000_000, 0, 1_000_000_000),
-            (0, 4, 3_598_400_000),
+            (Gas::from_gas(1_000_000), 3, Gas::from_gas(2_699_800_000)),
+            (Gas::from_gas(3_000_000), 2, Gas::from_gas(1_802_200_000)),
+            (Gas::ZERO, 1, Gas::from_gas(899_600_000)),
+            (Gas::from_gigagas(1), 0, Gas::from_gigagas(1)),
+            (Gas::ZERO, 4, Gas::from_gas(3_598_400_000)),
         ]);
 
         // Weight over u64 bounds
-        function_call_weight_check(&[(0, u64::MAX, 9_999_999_999), (0, 1000, 1)]);
+        function_call_weight_check(&[
+            (Gas::ZERO, u64::MAX, Gas::from_gas(9_999_999_999)),
+            (Gas::ZERO, 1000, Gas::from_gas(1)),
+        ]);
 
         // Weight over gas limit with three function calls
         function_call_weight_check(&[
-            (0, 10_000_000_000, 4_999_999_999),
-            (0, 1, 0),
-            (0, 10_000_000_000, 5_000_000_001),
+            (Gas::ZERO, 10_000_000_000, Gas::from_gas(4_999_999_999)),
+            (Gas::ZERO, 1, Gas::ZERO),
+            (Gas::ZERO, 10_000_000_000, Gas::from_gas(5_000_000_001)),
         ]);
 
         // Weights with one zero and one non-zero
-        function_call_weight_check(&[(0, 0, 0), (0, 1, 10_000_000_000)])
+        function_call_weight_check(&[
+            (Gas::ZERO, 0, Gas::ZERO),
+            (Gas::ZERO, 1, Gas::from_gigagas(10)),
+        ])
     }
 }

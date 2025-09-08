@@ -12,9 +12,10 @@ use near_primitives::errors::{
 use near_primitives::receipt::{ActionReceipt, DataReceipt, Receipt, ReceiptEnum};
 use near_primitives::transaction::{
     Action, AddKeyAction, DeployContractAction, FunctionCallAction, SignedTransaction, StakeAction,
+    Transaction,
 };
 use near_primitives::transaction::{DeleteAccountAction, ValidatedTransaction};
-use near_primitives::types::{AccountId, Balance};
+use near_primitives::types::{AccountId, Balance, Gas};
 use near_primitives::types::{BlockHeight, StorageUsage};
 use near_primitives::version::ProtocolFeature;
 use near_primitives::version::ProtocolVersion;
@@ -35,12 +36,20 @@ pub enum StorageStakingError {
     StorageError(String),
 }
 
-/// Checks if given account has enough balance for storage stake, and returns:
+/// Checks if given account has enough balance for storage stake.
+///
+/// Note that the current account balance has to be provided separately. This is to accommodate
+/// callers which want to check for specific balance and not necessarily the balance specified
+/// inside the account.
+///
+/// Returns:
+///
 ///  - Ok(()) if account has enough balance or is a zero-balance account
 ///  - Err(StorageStakingError::LackBalanceForStorageStaking(amount)) if account doesn't have enough and how much need to be added,
 ///  - Err(StorageStakingError::StorageError(err)) if account has invalid storage usage or amount/locked.
 pub fn check_storage_stake(
     account: &Account,
+    account_balance: Balance,
     runtime_config: &RuntimeConfig,
 ) -> Result<(), StorageStakingError> {
     let billable_storage_bytes = account.storage_usage();
@@ -53,8 +62,7 @@ pub fn check_storage_stake(
             )
         })
         .map_err(StorageStakingError::StorageError)?;
-    let available_amount = account
-        .amount()
+    let available_amount = account_balance
         .checked_add(account.locked())
         .ok_or_else(|| {
             format!(
@@ -140,27 +148,25 @@ pub fn get_signer_and_access_key(
     Ok((signer, access_key))
 }
 
+/// Verify nonce, balance and access key for the transaction given the account state.
+///
+/// This will only modify the `signer` and `access_key` with the new state if the function returns
+/// `Ok`.
 pub fn verify_and_charge_tx_ephemeral(
     config: &RuntimeConfig,
     signer: &mut Account,
     access_key: &mut AccessKey,
-    validated_tx: &ValidatedTransaction,
+    tx: &Transaction,
     transaction_cost: &TransactionCost,
     block_height: Option<BlockHeight>,
 ) -> Result<VerificationResult, InvalidTxError> {
     let _span = tracing::debug_span!(target: "runtime", "verify_and_charge_transaction").entered();
-
     let TransactionCost { gas_burnt, gas_remaining, receipt_gas_price, total_cost, burnt_amount } =
         *transaction_cost;
-
-    let signer_id = validated_tx.signer_id();
-    let tx = validated_tx.to_tx();
+    let signer_id = tx.signer_id();
     if tx.nonce() <= access_key.nonce {
-        return Err(InvalidTxError::InvalidNonce {
-            tx_nonce: tx.nonce(),
-            ak_nonce: access_key.nonce,
-        }
-        .into());
+        let err = InvalidTxError::InvalidNonce { tx_nonce: tx.nonce(), ak_nonce: access_key.nonce };
+        return Err(err.into());
     }
     if let Some(height) = block_height {
         let upper_bound =
@@ -169,24 +175,16 @@ pub fn verify_and_charge_tx_ephemeral(
             return Err(InvalidTxError::NonceTooLarge { tx_nonce: tx.nonce(), upper_bound }.into());
         }
     }
-    access_key.nonce = tx.nonce();
 
-    match signer.amount().checked_sub(total_cost) {
-        Some(new_amount) => signer.set_amount(new_amount),
-        None => {
-            return Err(InvalidTxError::NotEnoughBalance {
-                signer_id: signer_id.clone(),
-                balance: signer.amount(),
-                cost: total_cost,
-            }
-            .into());
-        }
-    }
+    let balance = signer.amount();
+    let Some(new_amount) = balance.checked_sub(total_cost) else {
+        let signer_id = signer_id.clone();
+        let err = InvalidTxError::NotEnoughBalance { signer_id, balance, cost: total_cost };
+        return Err(err.into());
+    };
 
-    if let AccessKeyPermission::FunctionCall(ref mut function_call_permission) =
-        access_key.permission
-    {
-        if let Some(ref mut allowance) = function_call_permission.allowance {
+    if let AccessKeyPermission::FunctionCall(ref mut perms) = access_key.permission {
+        if let Some(ref mut allowance) = perms.allowance {
             *allowance = allowance.checked_sub(total_cost).ok_or_else(|| {
                 InvalidTxError::InvalidAccessKeyError(InvalidAccessKeyError::NotEnoughAllowance {
                     account_id: signer_id.clone(),
@@ -198,14 +196,11 @@ pub fn verify_and_charge_tx_ephemeral(
         }
     }
 
-    match check_storage_stake(&signer, config) {
+    match check_storage_stake(&signer, new_amount, config) {
         Ok(()) => {}
         Err(StorageStakingError::LackBalanceForStorageStaking(amount)) => {
-            return Err(InvalidTxError::LackBalanceForState {
-                signer_id: signer_id.clone(),
-                amount,
-            }
-            .into());
+            let err = InvalidTxError::LackBalanceForState { signer_id: signer_id.clone(), amount };
+            return Err(err.into());
         }
         Err(StorageStakingError::StorageError(err)) => {
             return Err(StorageError::StorageInconsistentState(err).into());
@@ -214,26 +209,22 @@ pub fn verify_and_charge_tx_ephemeral(
 
     if let AccessKeyPermission::FunctionCall(ref function_call_permission) = access_key.permission {
         if tx.actions().len() != 1 {
-            return Err(InvalidTxError::InvalidAccessKeyError(
-                InvalidAccessKeyError::RequiresFullAccess,
-            )
-            .into());
+            let err = InvalidAccessKeyError::RequiresFullAccess;
+            return Err(InvalidTxError::InvalidAccessKeyError(err).into());
         }
         if let Some(Action::FunctionCall(function_call)) = tx.actions().get(0) {
             if function_call.deposit > 0 {
-                return Err(InvalidTxError::InvalidAccessKeyError(
-                    InvalidAccessKeyError::DepositWithFunctionCall,
-                )
-                .into());
+                let err = InvalidAccessKeyError::DepositWithFunctionCall;
+                return Err(InvalidTxError::InvalidAccessKeyError(err).into());
             }
-            if tx.receiver_id() != &function_call_permission.receiver_id {
-                return Err(InvalidTxError::InvalidAccessKeyError(
-                    InvalidAccessKeyError::ReceiverMismatch {
-                        tx_receiver: tx.receiver_id().clone(),
-                        ak_receiver: function_call_permission.receiver_id.clone(),
-                    },
-                )
-                .into());
+            let tx_receiver = tx.receiver_id();
+            let ak_receiver = &function_call_permission.receiver_id;
+            if tx_receiver != ak_receiver {
+                let err = InvalidAccessKeyError::ReceiverMismatch {
+                    tx_receiver: tx_receiver.clone(),
+                    ak_receiver: ak_receiver.clone(),
+                };
+                return Err(InvalidTxError::InvalidAccessKeyError(err).into());
             }
             if !function_call_permission.method_names.is_empty()
                 && function_call_permission
@@ -241,21 +232,19 @@ pub fn verify_and_charge_tx_ephemeral(
                     .iter()
                     .all(|method_name| &function_call.method_name != method_name)
             {
-                return Err(InvalidTxError::InvalidAccessKeyError(
-                    InvalidAccessKeyError::MethodNameMismatch {
-                        method_name: function_call.method_name.clone(),
-                    },
-                )
-                .into());
+                let err = InvalidAccessKeyError::MethodNameMismatch {
+                    method_name: function_call.method_name.clone(),
+                };
+                return Err(InvalidTxError::InvalidAccessKeyError(err).into());
             }
         } else {
-            return Err(InvalidTxError::InvalidAccessKeyError(
-                InvalidAccessKeyError::RequiresFullAccess,
-            )
-            .into());
+            let err = InvalidAccessKeyError::RequiresFullAccess;
+            return Err(InvalidTxError::InvalidAccessKeyError(err).into());
         }
     };
 
+    access_key.nonce = tx.nonce();
+    signer.set_amount(new_amount);
     Ok(VerificationResult { gas_burnt, gas_remaining, receipt_gas_price, burnt_amount })
 }
 
@@ -268,7 +257,7 @@ pub(crate) fn validate_receipt(
 ) -> Result<(), ReceiptValidationError> {
     if mode == ValidateReceiptMode::NewReceipt {
         let receipt_size: u64 =
-            borsh::to_vec(receipt).unwrap().len().try_into().expect("Can't convert usize to u64");
+            borsh::object_length(receipt).unwrap().try_into().expect("Can't convert usize to u64");
         if receipt_size > limit_config.max_receipt_size {
             return Err(ReceiptValidationError::ReceiptSizeExceeded {
                 size: receipt_size,
@@ -476,7 +465,7 @@ fn validate_function_call_action(
     limit_config: &LimitConfig,
     action: &FunctionCallAction,
 ) -> Result<(), ActionsValidationError> {
-    if action.gas == 0 {
+    if action.gas == Gas::ZERO {
         return Err(ActionsValidationError::FunctionCallZeroAttachedGas);
     }
 
@@ -754,7 +743,7 @@ mod tests {
             config,
             &mut signer,
             &mut access_key,
-            &validated_tx,
+            validated_tx.to_tx(),
             &cost,
             None,
         )
@@ -782,7 +771,7 @@ mod tests {
             config,
             &mut signer,
             &mut access_key,
-            &validated_tx,
+            validated_tx.to_tx(),
             &transaction_cost,
             block_height,
         )?;
@@ -915,11 +904,11 @@ mod tests {
         )
         .expect("valid transaction");
         // Should not be free. Burning for sending
-        assert!(verification_result.gas_burnt > 0);
+        assert!(verification_result.gas_burnt > Gas::ZERO);
         // All burned gas goes to the validators at current gas price
         assert_eq!(
             verification_result.burnt_amount,
-            Balance::from(verification_result.gas_burnt) * gas_price
+            Balance::from(verification_result.gas_burnt.as_gas()) * gas_price
         );
 
         let account = get_account(&state_update, &alice_account()).unwrap().unwrap();
@@ -927,7 +916,7 @@ mod tests {
         assert_eq!(
             account.amount(),
             TESTING_INIT_BALANCE
-                - Balance::from(verification_result.gas_remaining)
+                - Balance::from(verification_result.gas_remaining.as_gas())
                     * verification_result.receipt_gas_price
                 - verification_result.burnt_amount
                 - deposit
@@ -1002,7 +991,7 @@ mod tests {
             setup_common(TESTING_INIT_BALANCE, 0, Some(AccessKey::full_access()));
 
         let wasm_config = Arc::make_mut(&mut config.wasm_config);
-        wasm_config.limit_config.max_total_prepaid_gas = 100;
+        wasm_config.limit_config.max_total_prepaid_gas = Gas::from_gas(100);
 
         assert_err_both_validations(
             &config,
@@ -1016,15 +1005,15 @@ mod tests {
                 vec![Action::FunctionCall(Box::new(FunctionCallAction {
                     method_name: "hello".to_string(),
                     args: b"abc".to_vec(),
-                    gas: 200,
+                    gas: Gas::from_gas(200),
                     deposit: 0,
                 }))],
                 CryptoHash::default(),
                 0,
             ),
             InvalidTxError::ActionsValidation(ActionsValidationError::TotalPrepaidGasExceeded {
-                total_prepaid_gas: 200,
-                limit: 100,
+                total_prepaid_gas: Gas::from_gas(200),
+                limit: Gas::from_gas(100),
             }),
         );
     }
@@ -1188,7 +1177,7 @@ mod tests {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 300,
+                gas: Gas::from_gas(300),
                 deposit: 0,
             }))],
             CryptoHash::default(),
@@ -1248,8 +1237,8 @@ mod tests {
             PROTOCOL_VERSION,
         )
         .unwrap();
-        assert_eq!(verification_result.gas_burnt, 0);
-        assert_eq!(verification_result.gas_remaining, 0);
+        assert_eq!(verification_result.gas_burnt, Gas::ZERO);
+        assert_eq!(verification_result.gas_remaining, Gas::ZERO);
         assert_eq!(verification_result.burnt_amount, 0);
     }
 
@@ -1327,7 +1316,7 @@ mod tests {
                 Action::FunctionCall(Box::new(FunctionCallAction {
                     method_name: "hello".to_string(),
                     args: b"abc".to_vec(),
-                    gas: 100,
+                    gas: Gas::from_gas(100),
                     deposit: 0,
                 })),
                 Action::CreateAccount(CreateAccountAction {}),
@@ -1410,7 +1399,7 @@ mod tests {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 0,
             }))],
             CryptoHash::default(),
@@ -1459,7 +1448,7 @@ mod tests {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 0,
             }))],
             CryptoHash::default(),
@@ -1507,7 +1496,7 @@ mod tests {
             vec![Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 100,
             }))],
             CryptoHash::default(),
@@ -1669,7 +1658,7 @@ mod tests {
             &[Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 0,
             }))],
             PROTOCOL_VERSION,
@@ -1680,7 +1669,7 @@ mod tests {
     #[test]
     fn test_validate_actions_too_much_gas() {
         let mut limit_config = test_limit_config();
-        limit_config.max_total_prepaid_gas = 220;
+        limit_config.max_total_prepaid_gas = Gas::from_gas(220);
         assert_eq!(
             validate_actions(
                 &limit_config,
@@ -1688,27 +1677,30 @@ mod tests {
                     Action::FunctionCall(Box::new(FunctionCallAction {
                         method_name: "hello".to_string(),
                         args: b"abc".to_vec(),
-                        gas: 100,
+                        gas: Gas::from_gas(100),
                         deposit: 0,
                     })),
                     Action::FunctionCall(Box::new(FunctionCallAction {
                         method_name: "hello".to_string(),
                         args: b"abc".to_vec(),
-                        gas: 150,
+                        gas: Gas::from_gas(150),
                         deposit: 0,
                     }))
                 ],
                 PROTOCOL_VERSION,
             )
             .expect_err("expected an error"),
-            ActionsValidationError::TotalPrepaidGasExceeded { total_prepaid_gas: 250, limit: 220 }
+            ActionsValidationError::TotalPrepaidGasExceeded {
+                total_prepaid_gas: Gas::from_gas(250),
+                limit: Gas::from_gas(220)
+            }
         );
     }
 
     #[test]
     fn test_validate_actions_gas_overflow() {
         let mut limit_config = test_limit_config();
-        limit_config.max_total_prepaid_gas = 220;
+        limit_config.max_total_prepaid_gas = Gas::from_gas(220);
         assert_eq!(
             validate_actions(
                 &limit_config,
@@ -1716,13 +1708,13 @@ mod tests {
                     Action::FunctionCall(Box::new(FunctionCallAction {
                         method_name: "hello".to_string(),
                         args: b"abc".to_vec(),
-                        gas: u64::max_value() / 2 + 1,
+                        gas: Gas::from_gas(u64::max_value() / 2 + 1),
                         deposit: 0,
                     })),
                     Action::FunctionCall(Box::new(FunctionCallAction {
                         method_name: "hello".to_string(),
                         args: b"abc".to_vec(),
-                        gas: u64::max_value() / 2 + 1,
+                        gas: Gas::from_gas(u64::max_value() / 2 + 1),
                         deposit: 0,
                     }))
                 ],
@@ -1812,7 +1804,7 @@ mod tests {
             &Action::FunctionCall(Box::new(FunctionCallAction {
                 method_name: "hello".to_string(),
                 args: b"abc".to_vec(),
-                gas: 100,
+                gas: Gas::from_gas(100),
                 deposit: 0,
             })),
             PROTOCOL_VERSION,
@@ -1828,7 +1820,7 @@ mod tests {
                 &Action::FunctionCall(Box::new(FunctionCallAction {
                     method_name: "new".to_string(),
                     args: vec![],
-                    gas: 0,
+                    gas: Gas::ZERO,
                     deposit: 0,
                 })),
                 PROTOCOL_VERSION,

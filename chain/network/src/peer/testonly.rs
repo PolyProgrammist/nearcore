@@ -1,11 +1,10 @@
 use crate::broadcast;
 use crate::client::{ClientSenderForNetworkInput, ClientSenderForNetworkMessage};
 use crate::config::NetworkConfig;
-use crate::network_protocol::testonly as data;
 use crate::network_protocol::{
-    Edge, PartialEdgeInfo, PeerIdOrHash, PeerMessage, RawRoutedMessage, RoutedMessageBody,
-    RoutedMessageV2,
+    Edge, PartialEdgeInfo, PeerIdOrHash, PeerMessage, RawRoutedMessage, TieredMessageBody,
 };
+use crate::network_protocol::{RoutedMessage, testonly as data};
 use crate::peer::peer_actor::PeerActor;
 use crate::peer_manager::network_state::NetworkState;
 use crate::peer_manager::peer_manager_actor;
@@ -18,10 +17,13 @@ use crate::state_witness::{
 use crate::store;
 use crate::tcp;
 use crate::testonly::actix::ActixSystem;
-use crate::types::{PeerManagerSenderForNetworkInput, PeerManagerSenderForNetworkMessage};
+use crate::types::{
+    PeerManagerSenderForNetworkInput, PeerManagerSenderForNetworkMessage,
+    StateRequestSenderForNetworkInput, StateRequestSenderForNetworkMessage,
+};
 use near_async::messaging::{IntoMultiSender, Sender};
 use near_async::time;
-use near_o11y::WithSpanContextExt;
+use near_o11y::span_wrapped_msg::SpanWrappedMessageExt;
 use near_primitives::network::PeerId;
 use std::sync::Arc;
 
@@ -46,6 +48,7 @@ impl PeerConfig {
 pub(crate) enum Event {
     ShardsManager(ShardsManagerRequestFromNetwork),
     Client(ClientSenderForNetworkInput),
+    StateRequest(StateRequestSenderForNetworkInput),
     Network(peer_manager_actor::Event),
     PartialWitness(PartialWitnessSenderForNetworkInput),
     PeerManager(PeerManagerSenderForNetworkInput),
@@ -60,11 +63,7 @@ pub(crate) struct PeerHandle {
 
 impl PeerHandle {
     pub async fn send(&self, message: PeerMessage) {
-        self.actix
-            .addr
-            .send(SendMessage { message: Arc::new(message) }.with_span_context())
-            .await
-            .unwrap();
+        self.actix.addr.send(SendMessage { message: Arc::new(message) }.span_wrap()).await.unwrap();
     }
 
     pub async fn complete_handshake(&mut self) {
@@ -85,11 +84,11 @@ impl PeerHandle {
 
     pub fn routed_message(
         &self,
-        body: RoutedMessageBody,
+        body: TieredMessageBody,
         peer_id: PeerId,
         ttl: u8,
         utc: Option<time::Utc>,
-    ) -> RoutedMessageV2 {
+    ) -> RoutedMessage {
         RawRoutedMessage { target: PeerIdOrHash::PeerId(peer_id), body }.sign(
             &self.cfg.network.node_key,
             ttl,
@@ -119,6 +118,12 @@ impl PeerHandle {
                 send.send(Event::Client(event.into_input()));
             }
         });
+        let state_part_sender = Sender::from_fn({
+            let send = send.clone();
+            move |event: StateRequestSenderForNetworkMessage| {
+                send.send(Event::StateRequest(event.into_input()));
+            }
+        });
         let peer_manager_sender = Sender::from_fn({
             let send = send.clone();
             move |event: PeerManagerSenderForNetworkMessage| {
@@ -144,6 +149,7 @@ impl PeerHandle {
             network_cfg.verify().unwrap(),
             cfg.chain.genesis_id.clone(),
             client_sender.break_apart().into_multi_sender(),
+            state_part_sender.break_apart().into_multi_sender(),
             peer_manager_sender.break_apart().into_multi_sender(),
             shards_manager_sender,
             state_witness_sender.break_apart().into_multi_sender(),

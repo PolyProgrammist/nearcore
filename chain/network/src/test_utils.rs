@@ -8,15 +8,15 @@ use actix::{Actor, ActorContext, Context, Handler};
 use futures::{Future, FutureExt, future};
 use near_async::messaging::{CanSend, MessageWithCallback};
 use near_crypto::{KeyType, SecretKey};
-use near_o11y::{WithSpanContext, handler_debug_span};
 use near_primitives::hash::hash;
 use near_primitives::network::PeerId;
 use near_primitives::types::EpochId;
 use near_primitives::utils::index_to_bytes;
+use parking_lot::RwLock;
 use rand::{RngCore, thread_rng};
 use std::collections::{HashMap, VecDeque};
 use std::ops::ControlFlow;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::debug;
 
@@ -62,7 +62,7 @@ pub fn wait_or_panic(max_wait_ms: u64) {
 ///     WaitOrTimeoutActor::new(
 ///         Box::new(move |ctx| {
 ///             if start.elapsed() > Duration::from_millis(10) {
-///                 System::current().stop()
+///                 near_async::shutdown_all_actors();
 ///             }
 ///         }),
 ///         1000,
@@ -185,11 +185,10 @@ pub fn expected_routing_tables(
 #[rtype(result = "NetworkInfo")]
 pub struct GetInfo {}
 
-impl Handler<WithSpanContext<GetInfo>> for PeerManagerActor {
+impl Handler<GetInfo> for PeerManagerActor {
     type Result = crate::types::NetworkInfo;
 
-    fn handle(&mut self, msg: WithSpanContext<GetInfo>, _ctx: &mut Context<Self>) -> Self::Result {
-        let (_span, _msg) = handler_debug_span!(target: "network", msg);
+    fn handle(&mut self, _msg: GetInfo, _ctx: &mut Context<Self>) -> Self::Result {
         self.get_network_info()
     }
 }
@@ -207,15 +206,10 @@ impl StopSignal {
     }
 }
 
-impl Handler<WithSpanContext<StopSignal>> for PeerManagerActor {
+impl Handler<StopSignal> for PeerManagerActor {
     type Result = ();
 
-    fn handle(
-        &mut self,
-        msg: WithSpanContext<StopSignal>,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let (_span, msg) = handler_debug_span!(target: "network", msg);
+    fn handle(&mut self, msg: StopSignal, ctx: &mut Self::Context) -> Self::Result {
         debug!(target: "network", "Receive Stop Signal.");
 
         if msg.should_panic {
@@ -240,7 +234,7 @@ impl CanSend<MessageWithCallback<PeerManagerMessageRequest, PeerManagerMessageRe
         &self,
         message: MessageWithCallback<PeerManagerMessageRequest, PeerManagerMessageResponse>,
     ) {
-        self.requests.write().unwrap().push_back(message.message);
+        self.requests.write().push_back(message.message);
         self.notify.notify_one();
         (message.callback)(
             std::future::ready(Ok(PeerManagerMessageResponse::NetworkResponses(
@@ -253,7 +247,7 @@ impl CanSend<MessageWithCallback<PeerManagerMessageRequest, PeerManagerMessageRe
 
 impl CanSend<PeerManagerMessageRequest> for MockPeerManagerAdapter {
     fn send(&self, msg: PeerManagerMessageRequest) {
-        self.requests.write().unwrap().push_back(msg);
+        self.requests.write().push_back(msg);
         self.notify.notify_one();
     }
 }
@@ -272,13 +266,13 @@ impl CanSend<Tier3Request> for MockPeerManagerAdapter {
 
 impl MockPeerManagerAdapter {
     pub fn pop(&self) -> Option<PeerManagerMessageRequest> {
-        self.requests.write().unwrap().pop_front()
+        self.requests.write().pop_front()
     }
     pub fn pop_most_recent(&self) -> Option<PeerManagerMessageRequest> {
-        self.requests.write().unwrap().pop_back()
+        self.requests.write().pop_back()
     }
     pub fn put_back_most_recent(&self, request: PeerManagerMessageRequest) {
-        self.requests.write().unwrap().push_back(request);
+        self.requests.write().push_back(request);
     }
     /// Calls the handler for each message, but removing only those for which the handler returns
     /// None (or else the returned message gets requeued; the returned message should be the same
@@ -291,12 +285,12 @@ impl MockPeerManagerAdapter {
         // grabbing the lock for the whole duration, which might lead to a
         // deadlock if the processing of the request results in more network
         // messages.
-        let num_requests = self.requests.read().unwrap().len();
+        let num_requests = self.requests.read().len();
         let mut handled = false;
         for _ in 0..num_requests {
-            let request = self.requests.write().unwrap().pop_front().unwrap();
+            let request = self.requests.write().pop_front().unwrap();
             if let Some(request) = f(request) {
-                self.requests.write().unwrap().push_back(request);
+                self.requests.write().push_back(request);
             } else {
                 handled = true;
             }

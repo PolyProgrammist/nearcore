@@ -6,6 +6,7 @@ pub use crate::trie::config::TrieConfig;
 pub(crate) use crate::trie::config::{
     DEFAULT_SHARD_CACHE_DELETIONS_QUEUE_CAPACITY, DEFAULT_SHARD_CACHE_TOTAL_SIZE_LIMIT,
 };
+pub use crate::trie::mem::split::{TrieSplit, find_trie_split};
 pub use crate::trie::nibble_slice::NibbleSlice;
 pub use crate::trie::prefetching_trie_storage::{PrefetchApi, PrefetchError};
 pub use crate::trie::shard_tries::{KeyForStateChanges, ShardTries, WrappedTrieChanges};
@@ -34,13 +35,13 @@ use ops::insert_delete::GenericTrieUpdateInsertDelete;
 use ops::interface::{GenericNodeOrIndex, GenericTrieNode, GenericTrieUpdate};
 use ops::interface::{GenericTrieValue, UpdatedNodeId};
 use ops::resharding::{GenericTrieUpdateRetain, RetainMode};
+use parking_lot::{RwLock, RwLockReadGuard};
 pub use raw_node::{Children, RawTrieNode, RawTrieNodeWithSize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::hash::Hash;
-use std::ops::DerefMut;
 use std::str;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::Arc;
 pub use trie_recording::{SubtreeSize, TrieRecorder, TrieRecorderStats};
 use trie_storage_update::{
     TrieStorageNodeWithSize, TrieStorageUpdate, UpdatedTrieStorageNodeWithSize,
@@ -66,7 +67,9 @@ pub mod trie_storage_update;
 mod trie_tests;
 pub mod update;
 
-const POISONED_LOCK_ERR: &str = "The lock was poisoned.";
+/// Number of children for a trie branch
+pub const NUM_CHILDREN: usize = 16;
+pub type ChildrenMask = u16;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PartialStorage {
@@ -253,8 +256,7 @@ pub struct Trie {
     /// during the lifetime of this Trie struct. This is used to produce a
     /// state proof so that the same access pattern can be replayed using only
     /// the captured result.
-    // FIXME: make `TrieRecorder` internally MT-safe, instead of locking the entire structure.
-    recorder: Option<RwLock<TrieRecorder>>,
+    recorder: Option<TrieRecorder>,
     /// If true, accesses to trie nodes are recorded with node access tracker, thus counting TTNs.
     ///
     /// NOTE that depending on the implementation of the tracker the lookups may get cached and
@@ -410,7 +412,7 @@ impl TrieRefcountDeltaMap {
         let num_insertions = self.map.iter().filter(|(_h, (_v, rc))| *rc > 0).count();
         let mut insertions = Vec::with_capacity(num_insertions);
         let mut deletions = Vec::with_capacity(self.map.len().saturating_sub(num_insertions));
-        for (hash, (value, rc)) in self.map.into_iter() {
+        for (hash, (value, rc)) in self.map {
             if rc > 0 {
                 insertions.push(TrieRefcountAddition {
                     trie_node_or_value_hash: hash,
@@ -626,19 +628,19 @@ impl Trie {
     /// Makes a new trie that has everything the same except that access
     /// through that trie accumulates a state proof for all nodes accessed.
     pub fn recording_reads_new_recorder(&self) -> Self {
-        let recorder = RwLock::new(TrieRecorder::new(None));
+        let recorder = TrieRecorder::new(None);
         self.recording_reads_with_recorder(recorder)
     }
 
     /// Makes a new trie that has everything the same except that access
     /// through that trie accumulates a state proof for all nodes accessed.
     /// We also supply a proof size limit to prevent the proof from growing too large.
-    pub fn recording_reads_with_proof_size_limit(&self, proof_size_limit: usize) -> Self {
-        let recorder = RwLock::new(TrieRecorder::new(Some(proof_size_limit)));
+    pub fn recording_reads_with_proof_size_limit(&self, proof_size_limit: u64) -> Self {
+        let recorder = TrieRecorder::new(Some(proof_size_limit));
         self.recording_reads_with_recorder(recorder)
     }
 
-    pub fn recording_reads_with_recorder(&self, recorder: RwLock<TrieRecorder>) -> Self {
+    pub fn recording_reads_with_recorder(&self, recorder: TrieRecorder) -> Self {
         let mut trie = Self::new_with_memtries(
             self.storage.clone(),
             self.memtries.clone(),
@@ -651,23 +653,19 @@ impl Trie {
         trie
     }
 
-    pub fn take_recorder(self) -> Option<RwLock<TrieRecorder>> {
-        self.recorder
+    /// Takes the recorded state proof out of the trie.
+    pub fn recorded_storage(self) -> Option<PartialStorage> {
+        self.recorder.map(|recorder| recorder.recorded_storage())
     }
 
-    /// Takes the recorded state proof out of the trie.
-    pub fn recorded_storage(&self) -> Option<PartialStorage> {
-        self.recorder
-            .as_ref()
-            .map(|recorder| recorder.write().expect("no poison").recorded_storage())
+    /// Takes the recorded state as trie changes out of the trie.
+    pub fn recorded_trie_changes(self, state_root: CryptoHash) -> Option<TrieChanges> {
+        self.recorder.map(|recorder| recorder.recorded_trie_changes(state_root))
     }
 
     /// Returns the in-memory size of the recorded state proof. Useful for checking size limit of state witness
     pub fn recorded_storage_size(&self) -> usize {
-        self.recorder
-            .as_ref()
-            .map(|recorder| recorder.read().expect("no poison").recorded_storage_size())
-            .unwrap_or_default()
+        self.recorder.as_ref().map(|recorder| recorder.recorded_storage_size()).unwrap_or_default()
     }
 
     /// Size of the recorded state proof plus some additional size added to cover removals.
@@ -675,15 +673,12 @@ impl Trie {
     pub fn recorded_storage_size_upper_bound(&self) -> usize {
         self.recorder
             .as_ref()
-            .map(|recorder| recorder.read().expect("no poison").recorded_storage_size_upper_bound())
+            .map(|recorder| recorder.recorded_storage_size_upper_bound())
             .unwrap_or_default()
     }
 
     pub fn check_proof_size_limit_exceed(&self) -> bool {
-        self.recorder
-            .as_ref()
-            .map(|recorder| recorder.read().expect("no poison").check_proof_size_limit_exceed())
-            .unwrap_or_default()
+        self.recorder.as_ref().is_some_and(|recorder| recorder.check_proof_size_limit_exceed())
     }
 
     /// Constructs a Trie from the partial storage (i.e. state proof) that
@@ -699,20 +694,27 @@ impl Trie {
         root: StateRoot,
         flat_storage_used: bool,
     ) -> Self {
+        Self::from_recorded_storage_with_storage::<false>(partial_storage, root, flat_storage_used)
+            .0
+    }
+
+    pub fn from_recorded_storage_with_storage<const TRACK_VISITED_NODES: bool>(
+        partial_storage: PartialStorage,
+        root: StateRoot,
+        flat_storage_used: bool,
+    ) -> (Self, Arc<TrieMemoryPartialStorage<TRACK_VISITED_NODES>>) {
         let PartialState::TrieValues(nodes) = partial_storage.nodes;
         let recorded_storage = nodes.into_iter().map(|value| (hash(&value), value)).collect();
         let storage = Arc::new(TrieMemoryPartialStorage::new(recorded_storage));
-        let mut trie = Self::new(storage, root, None);
+        let mut trie = Self::new(Arc::clone(&storage) as _, root, None);
         trie.use_access_tracker = !flat_storage_used;
-        trie
+        (trie, storage)
     }
 
     /// Get statistics about the recorded trie. Useful for observability and debugging.
     /// This scans all of the recorded data, so could potentially be expensive to run.
     pub fn recorder_stats(&self) -> Option<TrieRecorderStats> {
-        self.recorder
-            .as_ref()
-            .map(|recorder| recorder.read().expect("no poison").get_stats(&self.root))
+        self.recorder.as_ref().map(|recorder| recorder.get_stats(&self.root))
     }
 
     pub fn get_root(&self) -> &StateRoot {
@@ -738,7 +740,7 @@ impl Trie {
         // that it is possible to generated continuous stream of witnesses with a fixed
         // size. Using static key achieves that since in case of multiple receipts garbage
         // data will simply be overwritten, not accumulated.
-        recorder.write().expect("no poison").record_unaccounted(
+        recorder.record_unaccounted(
             &CryptoHash::hash_bytes(b"__garbage_data_key_1720025071757228"),
             data.into(),
         );
@@ -771,7 +773,7 @@ impl Trie {
         };
         if access_options.enable_state_witness_recording {
             if let Some(recorder) = &self.recorder {
-                recorder.write().expect("no poison").record(hash, result.clone());
+                recorder.record(hash, result.clone());
             }
         }
         Ok(result)
@@ -785,7 +787,10 @@ impl Trie {
     ) -> u64 {
         // Cannot compute memory usage naively if given only partial storage.
 
-        if self.storage.as_partial_storage().is_some() {
+        let storage_any = &*self.storage as &dyn std::any::Any;
+        if storage_any.is::<TrieMemoryPartialStorage<false>>()
+            || storage_any.is::<TrieMemoryPartialStorage<true>>()
+        {
             return 0;
         }
         // We don't want to impact recorded storage by retrieving nodes for
@@ -1322,28 +1327,37 @@ impl Trie {
             return Ok(None);
         }
 
-        let lock = self.memtries.as_ref().unwrap().read().unwrap();
+        let lock = self.memtries.as_ref().unwrap().read();
         let mem_value = if use_trie_accounting_cache
             || access_options.enable_state_witness_recording
         {
             let mut accessed_nodes = Vec::new();
             let mem_value = lock.lookup(&self.root, key, Some(&mut accessed_nodes))?;
-            if use_trie_accounting_cache {
-                for (node_hash, serialized_node) in &accessed_nodes {
-                    if access_options.trie_access_tracker.track_mem_lookup(node_hash).is_none() {
+            for node_view in accessed_nodes {
+                let node_hash = node_view.node_hash();
+                let mut serialized_node: Option<Arc<[u8]>> = None;
+                let mut get_serialized_node = || -> Arc<[u8]> {
+                    serialized_node
+                        .get_or_insert_with(|| {
+                            borsh::to_vec(&node_view.to_raw_trie_node_with_size()).unwrap().into()
+                        })
+                        .clone()
+                };
+
+                if use_trie_accounting_cache {
+                    if access_options.trie_access_tracker.track_mem_lookup(&node_hash).is_none() {
                         access_options
                             .trie_access_tracker
-                            .track_disk_lookup(*node_hash, Arc::clone(serialized_node));
+                            .track_disk_lookup(node_hash, get_serialized_node());
+                    }
+                }
+                if access_options.enable_state_witness_recording {
+                    if let Some(recorder) = &self.recorder {
+                        recorder.record_with(&node_hash, get_serialized_node);
                     }
                 }
             }
-            if access_options.enable_state_witness_recording {
-                if let Some(recorder) = &self.recorder {
-                    for (node_hash, serialized_node) in accessed_nodes {
-                        recorder.write().expect("no poison").record(&node_hash, serialized_node);
-                    }
-                }
-            }
+
             mem_value
         } else {
             lock.lookup(&self.root, key, None)?
@@ -1530,7 +1544,7 @@ impl Trie {
                 }
                 if operation_options.enable_state_witness_recording {
                     if let Some(recorder) = &self.recorder {
-                        recorder.write().expect("no poison").record(&value_hash, arc_value);
+                        recorder.record(&value_hash, arc_value);
                     }
                 }
                 Ok(value.clone())
@@ -1551,16 +1565,13 @@ impl Trie {
         I: IntoIterator<Item = (Vec<u8>, Option<Vec<u8>>)>,
     {
         // Call `get` for contract codes requested to be recorded.
+        let empty_set = Default::default();
         let codes_to_record = if opts.enable_state_witness_recording {
-            if let Some(recorder) = &self.recorder {
-                recorder.read().expect("no poison").codes_to_record.clone()
-            } else {
-                HashSet::default()
-            }
+            if let Some(recorder) = &self.recorder { &recorder.codes_to_record } else { &empty_set }
         } else {
-            Default::default()
+            &empty_set
         };
-        for account_id in codes_to_record {
+        for account_id in codes_to_record.iter() {
             let trie_key = TrieKey::ContractCode { account_id: account_id.clone() };
             let _ = self.get(&trie_key.to_vec(), opts);
         }
@@ -1581,15 +1592,12 @@ impl Trie {
         I: IntoIterator<Item = (Vec<u8>, Option<Vec<u8>>)>,
     {
         // Get trie_update for memtrie
-        let guard = self.memtries.as_ref().unwrap().read().unwrap();
-        let mut recorder = if opts.enable_state_witness_recording {
-            self.recorder.as_ref().map(|recorder| recorder.write().expect("no poison"))
-        } else {
-            None
-        };
-        let tracking_mode = match &mut recorder {
-            Some(recorder) => TrackingMode::RefcountsAndAccesses(recorder.deref_mut()),
-            None => TrackingMode::Refcounts,
+        let guard = self.memtries.as_ref().unwrap().read();
+        let tracking_mode = match &self.recorder {
+            Some(recorder) if opts.enable_state_witness_recording => {
+                TrackingMode::RefcountsAndAccesses(recorder)
+            }
+            Some(_) | None => TrackingMode::Refcounts,
         };
         let mut trie_update = guard.update(self.root, tracking_mode)?;
 
@@ -1597,7 +1605,7 @@ impl Trie {
         let child_guards = self
             .children_memtries
             .iter()
-            .map(|(shard_uid, memtrie)| (shard_uid, memtrie.read().unwrap()))
+            .map(|(shard_uid, memtrie)| (shard_uid, memtrie.read()))
             .collect_vec();
         let mut child_updates = child_guards
             .iter()
@@ -1679,8 +1687,7 @@ impl Trie {
         self.disk_iter_with_prune_condition(None)
     }
 
-    #[cfg(test)]
-    pub(crate) fn disk_iter_with_max_depth(
+    pub fn disk_iter_with_max_depth(
         &self,
         max_depth: usize,
     ) -> Result<DiskTrieIterator, StorageError> {
@@ -1700,7 +1707,11 @@ impl Trie {
     /// constructed afterward. This is needed because memtries are not
     /// thread-safe.
     pub fn lock_for_iter(&self) -> TrieWithReadLock<'_> {
-        TrieWithReadLock { trie: self, memtries: self.memtries.as_ref().map(|m| m.read().unwrap()) }
+        TrieWithReadLock { trie: self, memtries: self.lock_memtries() }
+    }
+
+    pub fn lock_memtries(&self) -> Option<RwLockReadGuard<'_, MemTries>> {
+        self.memtries.as_ref().map(|m| m.read())
     }
 
     /// Splits the trie, separating entries by the boundary account.
@@ -1711,17 +1722,57 @@ impl Trie {
         &self,
         boundary_account: &AccountId,
         retain_mode: RetainMode,
-        opts: AccessOptions,
-    ) -> Result<StateRoot, StorageError> {
+    ) -> Result<TrieChanges, StorageError> {
+        if self.memtries.is_some() {
+            self.retain_split_shard_with_memtrie(boundary_account, retain_mode)
+        } else {
+            self.retain_split_shard_with_trie_storage(boundary_account, retain_mode)
+        }
+    }
+
+    fn retain_split_shard_with_memtrie(
+        &self,
+        boundary_account: &AccountId,
+        retain_mode: RetainMode,
+    ) -> Result<TrieChanges, StorageError> {
+        // Get trie_update for memtrie
+        let guard = self.memtries.as_ref().unwrap().read();
+        let tracking_mode = match &self.recorder {
+            Some(recorder) => TrackingMode::RefcountsAndAccesses(recorder),
+            None => TrackingMode::Refcounts,
+        };
+        let mut trie_update = guard.update(self.root, tracking_mode)?;
+        trie_update.retain_split_shard(boundary_account, retain_mode, AccessOptions::DEFAULT);
+        let mut trie_changes = trie_update.to_trie_changes();
+
+        // Get child trie_changes for all child memtries
+        for (shard_uid, memtrie) in &self.children_memtries {
+            let inner_guard = memtrie.read();
+            let mut trie_update = inner_guard.update(self.root, TrackingMode::None).unwrap();
+            trie_update.retain_split_shard(boundary_account, retain_mode, AccessOptions::DEFAULT);
+            trie_changes
+                .children_memtrie_changes
+                .insert(*shard_uid, trie_update.to_memtrie_changes_only());
+        }
+
+        Ok(trie_changes)
+    }
+
+    fn retain_split_shard_with_trie_storage(
+        &self,
+        boundary_account: &AccountId,
+        retain_mode: RetainMode,
+    ) -> Result<TrieChanges, StorageError> {
         let mut trie_update = TrieStorageUpdate::new(&self);
-        let root_node = self.move_node_to_mutable(&mut trie_update, &self.root, opts)?;
-        trie_update.retain_split_shard(boundary_account, retain_mode, opts);
+        let root_node =
+            self.move_node_to_mutable(&mut trie_update, &self.root, AccessOptions::DEFAULT)?;
+        trie_update.retain_split_shard(boundary_account, retain_mode, AccessOptions::DEFAULT);
         #[cfg(test)]
         {
             self.memory_usage_verify(&trie_update, GenericNodeOrIndex::Updated(root_node.0));
         }
-        let result = trie_update.flatten_nodes(&self.root, root_node.0)?;
-        Ok(result.new_root)
+        let trie_changes = trie_update.flatten_nodes(&self.root, root_node.0)?;
+        Ok(trie_changes)
     }
 }
 
@@ -1733,7 +1784,7 @@ pub struct TrieWithReadLock<'a> {
 }
 
 impl<'a> TrieWithReadLock<'a> {
-    /// Obtains an iterator that can be used to traverse any range in the trie.
+    /// Obtains an iterator that can be used to traverse the trie.
     /// If memtries are present, returns an iterator that traverses the memtrie.
     /// Otherwise, it falls back to an iterator that traverses the on-disk trie.
     pub fn iter(&self) -> Result<TrieIterator<'_>, StorageError> {
@@ -1809,11 +1860,11 @@ mod tests {
     use near_primitives::shard_layout::ShardLayout;
     use rand::Rng;
 
-    use crate::MissingTrieValueContext;
     use crate::test_utils::{
         TestTriesBuilder, create_test_store, gen_changes, simplify_changes,
         test_populate_flat_storage, test_populate_trie,
     };
+    use crate::{MissingTrieValue, MissingTrieValueContext};
 
     use super::*;
 
@@ -2122,9 +2173,8 @@ mod tests {
             let trie = tries.get_trie_for_shard(ShardUId::single_shard(), state_root);
 
             // Those known keys.
-            for (key, value) in
-                trie_changes.into_iter().collect::<std::collections::HashMap<_, _>>()
-            {
+            #[allow(clippy::needless_collect)] // It is necessary to build a map to deduplicate keys
+            for (key, value) in trie_changes.into_iter().collect::<HashMap<_, _>>() {
                 if let Some(value) = value {
                     let want = Some(Ok((key.clone(), value)));
                     let mut iterator = trie.disk_iter().unwrap();
@@ -2228,10 +2278,10 @@ mod tests {
         assert_eq!(trie3.get(b"horse", AccessOptions::DEFAULT), Ok(Some(b"stallion".to_vec())));
         assert_matches!(
             trie3.get(b"doge", AccessOptions::DEFAULT),
-            Err(StorageError::MissingTrieValue(
-                MissingTrieValueContext::TrieMemoryPartialStorage,
-                _
-            ))
+            Err(StorageError::MissingTrieValue(MissingTrieValue {
+                context: MissingTrieValueContext::TrieMemoryPartialStorage,
+                hash: _
+            }))
         );
     }
 

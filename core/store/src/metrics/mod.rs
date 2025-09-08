@@ -490,12 +490,13 @@ pub mod flat_state_metrics {
             .unwrap()
         });
     }
+}
 
-    pub mod resharding {
-        use near_o11y::metrics::{
-            IntGauge, IntGaugeVec, try_create_int_gauge, try_create_int_gauge_vec,
-        };
-        use std::sync::LazyLock;
+pub mod resharding {
+    use super::*;
+
+    pub mod flat_state_metrics {
+        use super::*;
 
         pub static STATUS: LazyLock<IntGaugeVec> = LazyLock::new(|| {
             try_create_int_gauge_vec(
@@ -528,6 +529,19 @@ pub mod flat_state_metrics {
             )
             .unwrap()
         });
+    }
+    pub mod trie_state_metrics {
+        use super::*;
+
+        pub static STATE_COL_RESHARDING_PROCESSED_BATCHES: LazyLock<IntGaugeVec> =
+            LazyLock::new(|| {
+                try_create_int_gauge_vec(
+                    "near_state_col_resharding_processed_batches",
+                    "Number of processed batches inside the state column resharding task",
+                    &["shard_uid"],
+                )
+                .unwrap()
+            });
     }
 }
 
@@ -679,7 +693,7 @@ mod test {
         let sys = actix::System::new();
         sys.block_on(test_db_metrics_loop_impl()).expect("test impl failed");
 
-        actix::System::current().stop();
+        near_async::shutdown_all_actors();
         sys.run().unwrap();
     }
 }

@@ -5,6 +5,7 @@ use crate::logic::errors::PrepareError;
 use near_parameters::vm::{Config, VMKind};
 
 mod prepare_v2;
+mod prepare_v3;
 
 /// Loads the given module given in `original_code`, performs some checks on it and
 /// does some preprocessing.
@@ -22,8 +23,12 @@ pub fn prepare_contract(
     config: &Config,
     kind: VMKind,
 ) -> Result<Vec<u8>, PrepareError> {
-    let features = crate::features::WasmFeatures::new();
-    prepare_v2::prepare_contract(original_code, features, config, kind)
+    let features = crate::features::WasmFeatures::new(config);
+    if config.reftypes_bulk_memory {
+        prepare_v3::prepare_contract(original_code, features, config, kind)
+    } else {
+        prepare_v2::prepare_contract(original_code, features, config, kind)
+    }
 }
 
 #[cfg(test)]
@@ -43,8 +48,8 @@ mod tests {
 
     #[test]
     fn internal_memory_declaration() {
-        let config = test_vm_config();
-        with_vm_variants(&config, |kind| {
+        with_vm_variants(|kind| {
+            let config = test_vm_config(Some(kind));
             let r = parse_and_prepare_wat(&config, kind, r#"(module (memory 1 1))"#);
             assert_matches!(r, Ok(_));
         })
@@ -52,12 +57,11 @@ mod tests {
 
     #[test]
     fn memory_imports() {
-        let config = test_vm_config();
+        with_vm_variants(|kind| {
+            let config = test_vm_config(Some(kind));
+            // This test assumes that maximum page number is configured to a certain number.
+            assert_eq!(config.limit_config.max_memory_pages, 2048);
 
-        // This test assumes that maximum page number is configured to a certain number.
-        assert_eq!(config.limit_config.max_memory_pages, 2048);
-
-        with_vm_variants(&config, |kind| {
             let r = parse_and_prepare_wat(
                 &config,
                 kind,
@@ -97,8 +101,8 @@ mod tests {
 
     #[test]
     fn multiple_valid_memory_are_disabled() {
-        let config = test_vm_config();
-        with_vm_variants(&config, |kind| {
+        with_vm_variants(|kind| {
+            let config = test_vm_config(Some(kind));
             // Our preparation and sanitization pass assumes a single memory, so we should fail when
             // there are multiple specified.
             let r = parse_and_prepare_wat(
@@ -124,8 +128,8 @@ mod tests {
 
     #[test]
     fn imports() {
-        let config = test_vm_config();
-        with_vm_variants(&config, |kind| {
+        with_vm_variants(|kind| {
+            let config = test_vm_config(Some(kind));
             // nothing can be imported from non-"env" module for now.
             let r = parse_and_prepare_wat(
                 &config,
