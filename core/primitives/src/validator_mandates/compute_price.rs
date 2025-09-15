@@ -34,8 +34,9 @@ pub fn compute_mandate_price(config: ValidatorMandatesConfig, stakes: &[Balance]
     binary_search(Balance::from_yoctonear(1), total_stake, target_mandates, |mandate_price| {
         stakes
             .iter()
-            .map(|s: &Balance| s.checked_div(mandate_price.as_yoctonear()))
-            .fold(Balance::ZERO, |sum: Balance, item| sum.saturating_add(item))
+            .fold(Balance::ZERO, |sum: Balance, item| {
+                sum.saturating_add(item.checked_div(mandate_price.as_yoctonear()).unwrap())
+            })
             .as_yoctonear()
     })
 }
@@ -253,7 +254,7 @@ mod tests {
         stakes
             .iter()
             .fold(Balance::ZERO, |sum, item| {
-                sum.checked_add(item.checked_div(mandate_price.as_yoctonear()).unwrap()).unwrap()
+                sum.saturating_add(item.checked_div(mandate_price.as_yoctonear()).unwrap()).unwrap()
             })
             .as_yoctonear() as usize
     }

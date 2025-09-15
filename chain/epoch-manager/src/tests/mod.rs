@@ -162,7 +162,7 @@ fn test_validator_change_of_stake() {
     {
         assert_eq!(stake, &Balance::from_yoctonear(10));
     } else {
-        panic!("Expected NotEnoughStake kickout reason for test1");
+        panic!("Expected ValidatorKickoutReason::NotEnoughStake");
     }
 }
 
@@ -567,7 +567,7 @@ fn test_validator_reward_weight_by_stake() {
     let total_supply = stake_amount1
         .checked_add(stake_amount2)
         .unwrap()
-        .checked_mul(validators.len() as u128)
+        .checked_mul(validators.len().try_into().unwrap())
         .unwrap();
     let reward_calculator = RewardCalculator {
         max_inflation_rate: Ratio::new(5, 100),
@@ -671,7 +671,7 @@ fn test_reward_multiple_shards() {
     let validators =
         vec![("test1".parse().unwrap(), stake_amount), ("test2".parse().unwrap(), stake_amount)];
     let epoch_length = 10;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
     let reward_calculator = RewardCalculator {
         max_inflation_rate: Ratio::new(5, 100),
         num_blocks_per_year: 1_000_000,
@@ -840,7 +840,7 @@ fn test_expected_chunks() {
     ];
     let epoch_length = 20;
     let num_shards = 3;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
 
     let epoch_config = epoch_config(epoch_length, num_shards, 3, 3, 90, 60, 60);
     let epoch_manager = EpochManager::new(
@@ -917,7 +917,7 @@ fn test_expected_chunks_prev_block_not_produced() {
         ("test3".parse().unwrap(), stake_amount),
     ];
     let epoch_length = 50;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
     let epoch_manager =
         setup_epoch_manager(validators, epoch_length, 1, 3, 90, 90, 0, default_reward_calculator())
             .into_handle();
@@ -1397,7 +1397,7 @@ fn test_chunk_producer_kickout() {
     let validators =
         vec![("test1".parse().unwrap(), stake_amount), ("test2".parse().unwrap(), stake_amount)];
     let epoch_length = 10;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
     let em =
         setup_epoch_manager(validators, epoch_length, 4, 2, 90, 70, 0, default_reward_calculator())
             .into_handle();
@@ -1467,13 +1467,13 @@ fn test_chunk_validator_kickout_using_production_stats() {
                 stake_amount
                     .checked_add(Balance::from_yoctonear(100))
                     .unwrap()
-                    .checked_sub(Balance::from_yoctonear(i as u128))
+                    .checked_sub(Balance::from_yoctonear(i.try_into().unwrap()))
                     .unwrap(),
             )
         })
         .collect();
     let epoch_length = 10;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
     let num_shards = 2;
     let epoch_config = epoch_config(epoch_length, num_shards, 2, 2, 90, 40, 75);
     let em = EpochManager::new(
@@ -1550,13 +1550,13 @@ fn test_chunk_validator_kickout_using_endorsement_stats() {
                 stake_amount
                     .checked_add(Balance::from_yoctonear(100))
                     .unwrap()
-                    .checked_sub(Balance::from_yoctonear(i as u128))
+                    .checked_sub(Balance::from_yoctonear(i.try_into().unwrap()))
                     .unwrap(),
             )
         })
         .collect();
     let epoch_length = 10;
-    let total_supply = stake_amount.checked_mul(validators.len() as u128).unwrap();
+    let total_supply = stake_amount.checked_mul(validators.len().try_into().unwrap()).unwrap();
     let num_shards = 2;
     let epoch_config = epoch_config(epoch_length, num_shards, 2, 2, 90, 40, 75);
     let em = EpochManager::new(

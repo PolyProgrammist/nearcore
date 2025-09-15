@@ -97,13 +97,13 @@ fn test_cross_shard_tx_common(Params { num_transfers, rotate_validators, drop_ch
     let mut genesis_builder = TestLoopBuilder::new_genesis_builder()
         .epoch_length(epoch_length)
         .validators_spec(validator_spec)
-        .add_user_accounts_simple(&validator_accounts, Balance::from_yoctonear(stake))
+        .add_user_accounts_simple(&validator_accounts, stake)
         .shard_layout(shard_layout);
 
     let mut balances = vec![];
 
     for (i, account) in test_accounts.iter().enumerate() {
-        let amount = Balance::from_yoctonear(1000 + 100 * i as u128);
+        let amount = Balance::from_yoctonear((1000 + 100 * i).try_into().unwrap());
         genesis_builder = genesis_builder.add_user_account_simple(account.clone(), amount);
 
         balances.push(amount);
@@ -184,7 +184,7 @@ fn test_cross_shard_tx_common(Params { num_transfers, rotate_validators, drop_ch
 
             let from = finished_transfers % test_accounts.len();
             let to = (finished_transfers / test_accounts.len()) % test_accounts.len();
-            let amount = Balance::from_yoctonear((5 + finished_transfers) as u128);
+            let amount = Balance::from_yoctonear((5 + finished_transfers).try_into().unwrap());
 
             nonce += 1;
             let tx = SignedTransaction::send_money(

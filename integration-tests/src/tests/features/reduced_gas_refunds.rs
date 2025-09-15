@@ -110,7 +110,7 @@ fn generated_refunds_after_fn_call(
     }
 
     let balance_after = node_user.view_balance(&alice_account()).unwrap();
-    let total_cost = balance_before.saturating_sub(balance_after);
+    let total_cost = balance_before.checked_sub(balance_after).unwrap();
 
     // Make sure the total balances check out
     assert_eq!(outcome.tokens_burnt(), total_cost);

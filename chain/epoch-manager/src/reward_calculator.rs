@@ -99,7 +99,7 @@ impl RewardCalculator {
         let mut epoch_actual_reward = Balance::from_yoctonear(epoch_protocol_treasury);
         let total_stake: Balance = validator_stake
             .values()
-            .fold(Balance::ZERO, |sum, stake| sum.checked_add(*stake).unwrap());
+            .fold(Balance::ZERO, |sum, item| sum.checked_add(*item).unwrap());
         for (account_id, stats) in validator_block_chunk_stats {
             let production_ratio =
                 get_validator_online_ratio(&stats, online_thresholds.endorsement_cutoff_threshold);

@@ -138,7 +138,7 @@ impl std::ops::Neg for Amount {
 }
 
 impl Amount {
-    pub(crate) fn from_yoctonear(amount: Balance) -> Self {
+    pub(crate) fn from_balance(amount: Balance) -> Self {
         Self {
             value: crate::utils::SignedDiff::from(amount.as_yoctonear()),
             currency: Currency::near(),

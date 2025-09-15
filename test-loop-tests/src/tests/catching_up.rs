@@ -18,6 +18,7 @@ use near_primitives::types::{AccountId, Balance, BlockReference, NumSeats, Shard
 use near_primitives::views::{QueryRequest, QueryResponseKind};
 
 use crate::setup::builder::TestLoopBuilder;
+use crate::utils::ONE_NEAR;
 use crate::utils::rotating_validators_runner::RotatingValidatorsRunner;
 use crate::utils::transactions::get_anchor_hash;
 
@@ -100,7 +101,7 @@ fn test_catchup_random_single_part_sync_common(
     .collect();
     let seats: NumSeats = 8;
 
-    let stake = Balance::from_near(1);
+    let stake = ONE_NEAR;
     let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let test_accounts: Vec<AccountId> =
@@ -172,7 +173,7 @@ fn test_catchup_random_single_part_sync_common(
             let amount = if change_balances {
                 if i > j { Balance::from_yoctonear(2) } else { Balance::from_yoctonear(1) }
             } else {
-                Balance::from_yoctonear((((i + j + 17) * 701) % 42 + 1) as u128)
+                Balance::from_yoctonear((((i + j + 17) * 701) % 42 + 1).try_into().unwrap())
             };
             println!("VALUES {:?} {:?} {:?}", sender.to_string(), receiver.to_string(), amount);
 
@@ -288,7 +289,7 @@ fn slow_test_catchup_sanity_blocks_produced() {
     .collect();
     let seats: NumSeats = 8;
 
-    let stake = Balance::from_near(1);
+    let stake = ONE_NEAR;
     let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let accounts = runner.all_validators_accounts();
@@ -385,7 +386,7 @@ fn slow_test_all_chunks_accepted() {
     .collect();
     let seats: NumSeats = 8;
 
-    let stake = Balance::from_near(1);
+    let stake = ONE_NEAR;
     let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let accounts = runner.all_validators_accounts();

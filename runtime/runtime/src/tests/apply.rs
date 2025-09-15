@@ -441,10 +441,12 @@ fn test_apply_delayed_receipts_adjustable_gas_limit() {
         assert_eq!(
             account.amount(),
             initial_balance
-                .checked_add(small_transfer.checked_mul(num_receipts_processed as u128).unwrap())
+                .checked_add(
+                    small_transfer.checked_mul(num_receipts_processed.try_into().unwrap()).unwrap()
+                )
                 .unwrap()
                 .checked_add(Balance::from_yoctonear(
-                    (num_receipts_processed * (num_receipts_processed - 1) / 2) as u128
+                    (num_receipts_processed * (num_receipts_processed - 1) / 2).into()
                 ))
                 .unwrap()
         );
@@ -477,7 +479,9 @@ fn generate_receipts(small_transfer: Balance, n: u64) -> Vec<Receipt> {
                     output_data_receivers: vec![],
                     input_data_ids: vec![],
                     actions: vec![Action::Transfer(TransferAction {
-                        deposit: small_transfer.checked_add(i.into()),
+                        deposit: small_transfer
+                            .checked_add(Balance::from_yoctonear(i.into()))
+                            .unwrap(),
                     })],
                 }),
             })
@@ -492,7 +496,7 @@ fn generate_refund_receipts(small_transfer: Balance, n: u64) -> Vec<Receipt> {
             receipt_id = hash(receipt_id.as_ref());
             Receipt::new_balance_refund(
                 &alice_account(),
-                small_transfer.checked_add(i.into()),
+                small_transfer.checked_add(Balance::from_yoctonear(i.into())).unwrap(),
                 ReceiptPriority::NoPriority,
             )
         })

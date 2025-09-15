@@ -502,7 +502,7 @@ mod tests {
         let proposals = create_proposals((2..(2 * num_bp_seats + num_cp_seats)).map(|i| {
             (
                 format!("test{}", i),
-                Balance::from_yoctonear(2000 + (i as u128)),
+                Balance::from_yoctonear((2000 + i).into()),
                 if i <= num_cp_seats {
                     Proposal::ChunkOnlyProducer
                 } else {
@@ -588,7 +588,7 @@ mod tests {
         let proposals = create_proposals((2..(2 * num_bp_seats + num_cp_seats)).map(|i| {
             (
                 format!("test{}", i),
-                Balance::from_yoctonear(2000 + (i as u128)),
+                Balance::from_yoctonear((2000 + i).into()),
                 if i <= num_cp_seats {
                     Proposal::ChunkOnlyProducer
                 } else {

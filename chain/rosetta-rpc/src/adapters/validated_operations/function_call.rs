@@ -21,7 +21,7 @@ impl ValidatedOperation for FunctionCallOperation {
 
             account: self.account,
             amount: if self.attached_amount > Balance::ZERO {
-                Some(crate::models::Amount::from_yoctonear(self.attached_amount))
+                Some(crate::models::Amount::from_balance(self.attached_amount))
             } else {
                 None
             },

@@ -18,7 +18,7 @@ impl ValidatedOperation for StakeOperation {
             operation_identifier,
 
             account: self.account,
-            amount: Some(crate::models::Amount::from_yoctonear(self.amount)),
+            amount: Some(crate::models::Amount::from_balance(self.amount)),
             metadata: Some(crate::models::OperationMetadata {
                 public_key: Some(self.public_key),
                 ..Default::default()

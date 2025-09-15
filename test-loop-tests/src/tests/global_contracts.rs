@@ -417,7 +417,7 @@ impl GlobalContractsTestEnv {
             .fees
             .storage_usage_config
             .global_contract_storage_amount_per_byte
-            .checked_mul(contract_size as u128)
+            .checked_mul(contract_size.try_into().unwrap())
             .unwrap();
         GAS_PRICE.checked_mul(gas_fees.as_gas().into()).unwrap().checked_add(storage_cost).unwrap()
     }

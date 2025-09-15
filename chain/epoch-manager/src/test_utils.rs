@@ -100,7 +100,7 @@ pub fn epoch_info_with_num_seats(
     let validator_mandates = {
         let num_shards = chunk_producers_settlement.len();
         let total_stake =
-            all_validators.iter().fold(Balance::ZERO, |acc, v| acc.saturating_add(v.stake()));
+            all_validators.iter().fold(Balance::ZERO, |sum, item| sum.saturating_add(item.stake()));
         // For tests we estimate the target number of seats based on the seat price of the old algorithm.
         let target_mandates_per_shard =
             total_stake.checked_div(seat_price.as_yoctonear()).unwrap().as_yoctonear() as usize;

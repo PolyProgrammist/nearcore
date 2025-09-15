@@ -388,7 +388,7 @@ fn convert_account_update_to_operations(
                     sub_account: None,
                     metadata: None,
                 },
-                amount: Some(-crate::models::Amount::from_yoctonear(deposit)),
+                amount: Some(-crate::models::Amount::from_balance(deposit)),
                 type_: crate::models::OperationType::Transfer,
                 status: Some(crate::models::OperationStatusKind::Success),
                 metadata: crate::models::OperationMetadata::from_predecessor(

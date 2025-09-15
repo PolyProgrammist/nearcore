@@ -148,7 +148,7 @@ fn test_spice_chain() {
     for (account, balance_change) in &balance_changes {
         let got_balance = get_balance(&mut test_loop.data, account, epoch_id);
         let want_balance = Balance::from_yoctonear(
-            (INITIAL_BALANCE.as_yoctonear() as i128 + balance_change) as u128,
+            (INITIAL_BALANCE.as_yoctonear() as i128 + balance_change).try_into().unwrap(),
         );
         assert_eq!(got_balance, want_balance);
         assert_ne!(*balance_change, 0);
@@ -167,10 +167,10 @@ fn schedule_send_money_txs(
     let mut balance_changes = HashMap::new();
     let node_data = Arc::new(node_datas.to_vec());
     for (i, sender) in accounts.iter().cloned().enumerate() {
-        let amount = ONE_NEAR * (i as u128 + 1);
+        let amount = ONE_NEAR.checked_mul((i + 1).try_into().unwrap()).unwrap();
         let receiver = accounts[(i + 1) % accounts.len()].clone();
-        *balance_changes.entry(sender.clone()).or_default() -= amount as i128;
-        *balance_changes.entry(receiver.clone()).or_default() += amount as i128;
+        *balance_changes.entry(sender.clone()).or_default() -= amount.as_yoctonear() as i128;
+        *balance_changes.entry(receiver.clone()).or_default() += amount.as_yoctonear() as i128;
 
         let node_data = node_data.clone();
         let sent_txs = sent_txs.clone();
@@ -190,7 +190,7 @@ fn schedule_send_money_txs(
                     sender.clone(),
                     receiver.clone(),
                     &create_user_test_signer(&sender),
-                    Balance::from_yoctonear(amount),
+                    amount,
                     anchor_hash,
                 );
                 sent_txs.lock().insert(tx.get_hash());

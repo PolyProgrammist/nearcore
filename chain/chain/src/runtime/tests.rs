@@ -400,15 +400,19 @@ impl TestEnv {
             .as_u128(),
         );
         let per_epoch_protocol_treasury = per_epoch_total_reward
-            .checked_mul(*self.runtime.genesis_config.protocol_reward_rate.numer().into())
+            .checked_mul(
+                (*self.runtime.genesis_config.protocol_reward_rate.numer()).try_into().unwrap(),
+            )
             .unwrap()
-            .checked_div(*self.runtime.genesis_config.protocol_reward_rate.denom().into())
+            .checked_div(
+                (*self.runtime.genesis_config.protocol_reward_rate.denom()).try_into().unwrap(),
+            )
             .unwrap();
         let per_epoch_per_validator_reward = per_epoch_total_reward
             .checked_sub(per_epoch_protocol_treasury)
             .unwrap()
-            .checked_div(num_validators)
-            .into();
+            .checked_div(num_validators.try_into().unwrap())
+            .unwrap();
         (per_epoch_per_validator_reward, per_epoch_protocol_treasury)
     }
 }
@@ -1497,11 +1501,11 @@ fn generate_transaction_pool(signers: &Vec<Signer>, block_hash: CryptoHash) -> T
     for round in 1..signer_count {
         for i in 0..signer_count {
             let transaction = SignedTransaction::send_money(
-                round as u64,
+                round.try_into().unwrap(),
                 signers[i].get_account_id(),
                 signers[(i + round) % signer_count].get_account_id(),
                 &signers[i],
-                Balance::from_yoctonear(round as u128),
+                Balance::from_yoctonear(round.try_into().unwrap()),
                 block_hash,
             );
             let validated_tx = ValidatedTransaction::new_for_test(transaction);

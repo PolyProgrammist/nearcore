@@ -201,7 +201,7 @@ fn slow_test_validator_kickout() {
             );
             let mut rng = rand::thread_rng();
             let stakes = (0..num_nodes / 2)
-                .map(|_| NEAR_BASE.saturating_add(Balance::from_yoctonear(rng.gen_range(1..100))));
+                .map(|_| NEAR_BASE.checked_add(Balance::from_yoctonear(rng.gen_range(1..100))).unwrap());
             let stake_transactions = stakes.enumerate().map(|(i, stake)| {
                 let test_node = &test_nodes[i];
                 let signer = Arc::new(InMemorySigner::test_signer(&test_node.account_id));
@@ -554,7 +554,7 @@ fn slow_test_inflation() {
                                 // Chunk endorsement ratio 9/10 is mapped to 1 so the reward multiplier becomes 20/27.
                                 let inflation = protocol_reward + validator_reward * 20 / 27;
                                 tracing::info!(?block.header.total_supply, ?block.header.height, ?initial_total_supply, epoch_length, ?inflation, "Step2: epoch2");
-                                if block.header.total_supply == initial_total_supply.saturating_add(Balance::from_yoctonear(inflation)) {
+                                if block.header.total_supply == initial_total_supply.checked_add(Balance::from_yoctonear(inflation)).unwrap() {
                                     done2_copy2.store(true, Ordering::SeqCst);
                                 }
                             } else {

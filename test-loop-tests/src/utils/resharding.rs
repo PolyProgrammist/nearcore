@@ -140,13 +140,13 @@ pub(crate) fn execute_money_transfers(account_ids: Vec<AccountId>) -> LoopAction
 
                 let anchor_hash = get_anchor_hash(&clients);
                 let nonce = get_next_nonce(&test_loop_data, &node_datas, &sender);
-                let amount = ONE_NEAR * rng.gen_range(1..=10);
+                let amount = ONE_NEAR.checked_mul(rng.gen_range(1..=10)).unwrap();
                 let tx = SignedTransaction::send_money(
                     nonce,
                     sender.clone(),
                     receiver.clone(),
                     &create_user_test_signer(&sender).into(),
-                    Balance::from_yoctonear(amount),
+                    amount,
                     anchor_hash,
                 );
                 submit_tx(&node_datas, &client_account_id, tx);

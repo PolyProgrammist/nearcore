@@ -6,7 +6,7 @@ use near_primitives::types::{AccountId, Balance};
 use near_primitives::version::{PROTOCOL_VERSION, ProtocolFeature};
 use near_primitives::views::FinalExecutionStatus;
 
-const ONE_NEAR: u128 = 10u128.pow(24);
+const ONE_NEAR: Balance = Balance::from_near(1);
 
 /// Tests if the maximum allowed contract can be deployed with current gas limits
 #[test]
@@ -41,9 +41,9 @@ fn test_deploy_max_size_contract() {
     // Enough token to store contract + 1 NEAR for account
     let token_balance = config
         .storage_amount_per_byte()
-        .checked_mul(contract_size as u128)
+        .checked_mul(contract_size.try_into().unwrap())
         .unwrap()
-        .checked_add(Balance::from_yoctonear(ONE_NEAR))
+        .checked_add(ONE_NEAR)
         .unwrap();
 
     // Create test account

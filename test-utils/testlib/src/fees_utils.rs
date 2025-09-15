@@ -22,10 +22,19 @@ impl FeeHelper {
         Balance::from_yoctonear(gas.as_gas().into())
             .checked_mul(
                 self.gas_price
-                    .checked_mul((*self.cfg().pessimistic_gas_price_inflation_ratio.numer()).into())
+                    .checked_mul(
+                        (*self.cfg().pessimistic_gas_price_inflation_ratio.numer())
+                            .try_into()
+                            .unwrap(),
+                    )
                     .unwrap()
-                    .checked_div((*self.cfg().pessimistic_gas_price_inflation_ratio.denom()).into())
-                    .unwrap(),
+                    .checked_div(
+                        (*self.cfg().pessimistic_gas_price_inflation_ratio.denom())
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .as_yoctonear(),
             )
             .unwrap()
     }

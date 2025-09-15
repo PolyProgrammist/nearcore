@@ -490,7 +490,7 @@ async fn account_balance(
             .await?;
             balances.push(models::Amount::from_fungible_token(ft_balance, currency))
         }
-        balances.push(models::Amount::from_yoctonear(balance));
+        balances.push(models::Amount::from_balance(balance));
         Ok(Json(models::AccountBalanceResponse {
             block_identifier: models::BlockIdentifier::new(block_height, &block_hash),
             balances,
@@ -499,7 +499,7 @@ async fn account_balance(
     } else {
         Ok(Json(models::AccountBalanceResponse {
             block_identifier: models::BlockIdentifier::new(block_height, &block_hash),
-            balances: vec![models::Amount::from_yoctonear(balance)],
+            balances: vec![models::Amount::from_balance(balance)],
             metadata: nonces,
         }))
     }

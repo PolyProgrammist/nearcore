@@ -302,7 +302,7 @@ pub fn test_nonce_updated_when_tx_failed(node: impl Node) {
         .send_money(
             account_id.clone(),
             bob_account(),
-            TESTING_INIT_BALANCE.saturating_add(Balance::from_yoctonear(1)),
+            TESTING_INIT_BALANCE.checked_add(Balance::from_yoctonear(1)).unwrap(),
         )
         .unwrap_err();
     assert_eq!(node_user.get_access_key_nonce_for_signer(account_id).unwrap(), 0);
@@ -671,7 +671,7 @@ pub fn test_transaction_invalid_signature(node: impl Node) {
 pub fn test_send_money_over_balance(node: impl Node) {
     let account_id = &node.account_id().unwrap();
     let node_user = node.user();
-    let money_used = TESTING_INIT_BALANCE.saturating_add(Balance::from_yoctonear(1));
+    let money_used = TESTING_INIT_BALANCE.checked_add(Balance::from_yoctonear(1)).unwrap();
     node_user.send_money(account_id.clone(), bob_account(), money_used).unwrap_err();
     let result1 = node_user.view_account(account_id).unwrap();
     assert_eq!(
