@@ -752,13 +752,13 @@ fn test_account_factory() {
         }, "id": 0 },
         {"action_transfer": {
             "promise_index": 0,
-            "amount": serde_json::to_string(&TESTING_INIT_BALANCE.checked_div(2).unwrap()).unwrap(),
+            "amount": TESTING_INIT_BALANCE.checked_div(2).unwrap().as_yoctonear().to_string(),
         }, "id": 0 },
         {"action_add_key_with_function_call": {
             "promise_index": 0,
             "public_key": to_base64(&borsh::to_vec(&signer_new_account.public_key()).unwrap()),
             "nonce": 0,
-            "allowance": serde_json::to_string(&TESTING_INIT_BALANCE.checked_div(2).unwrap()).unwrap(),
+            "allowance": TESTING_INIT_BALANCE.checked_div(2).unwrap().as_yoctonear().to_string(),
             "receiver_id": "near_1",
             "method_names": "call_promise,hello"
         }, "id": 0 },
@@ -925,7 +925,7 @@ fn test_create_account_add_key_call_delete_key_delete_account() {
         }, "id": 0 },
         {"action_transfer": {
             "promise_index": 0,
-            "amount": serde_json::to_string(&TESTING_INIT_BALANCE.checked_div(2).unwrap()).unwrap(),
+            "amount": TESTING_INIT_BALANCE.checked_div(2).unwrap().as_yoctonear().to_string(),
         }, "id": 0 },
         {"action_add_key_with_full_access": {
             "promise_index": 0,
@@ -1075,7 +1075,7 @@ fn test_transfer_64len_hex() {
         }, "id": 0 },
         {"action_transfer": {
             "promise_index": 0,
-            "amount": serde_json::to_string(&TESTING_INIT_BALANCE.checked_div(2).unwrap()).unwrap(),
+            "amount": TESTING_INIT_BALANCE.checked_div(2).unwrap().as_yoctonear().to_string(),
         }, "id": 0 },
     ]);
 
@@ -1153,7 +1153,7 @@ fn test_create_transfer_64len_hex_fail() {
         }, "id": 0 },
         {"action_transfer": {
             "promise_index": 0,
-            "amount": serde_json::to_string(&TESTING_INIT_BALANCE.checked_div(2).unwrap()).unwrap(),
+            "amount": TESTING_INIT_BALANCE.checked_div(2).unwrap().as_yoctonear().to_string(),
         }, "id": 0 },
     ]);
 
@@ -1189,6 +1189,9 @@ fn test_create_transfer_64len_hex_fail() {
         assert_eq!(function_call_action.deposit, Balance::ZERO);
      }
     );
+
+    println!("receipts: {:?}", receipts);
+
     let [r1, refunds @ ..] = &receipts else { panic!("Incorrect number of produced receipts") };
     assert_single_refund_prior_to_nep536(&group, &refunds);
 
