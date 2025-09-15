@@ -201,7 +201,6 @@ struct ResetCmd;
 struct Validator {
     account_id: AccountId,
     public_key: PublicKey,
-    #[serde(with = "dec_format")]
     amount: Option<Balance>,
 }
 

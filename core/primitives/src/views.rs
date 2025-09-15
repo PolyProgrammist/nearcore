@@ -151,8 +151,6 @@ impl From<AccountView> for Account {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum AccessKeyPermissionView {
     FunctionCall {
-        #[serde(with = "dec_format")]
-        #[cfg_attr(feature = "schemars", schemars(with = "Option<String>"))]
         allowance: Option<Balance>,
         receiver_id: String,
         method_names: Vec<String>,
