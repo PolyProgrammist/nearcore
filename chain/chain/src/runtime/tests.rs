@@ -399,15 +399,16 @@ impl TestEnv {
                     * U256::from(num_ns_in_second)))
             .as_u128(),
         );
-        let per_epoch_protocol_treasury = Balance::from_yoctonear(
-            per_epoch_total_reward.as_yoctonear()
-                * *self.runtime.genesis_config.protocol_reward_rate.numer() as u128
-                / *self.runtime.genesis_config.protocol_reward_rate.denom() as u128,
-        );
-        let per_epoch_per_validator_reward = Balance::from_yoctonear(
-            (per_epoch_total_reward.as_yoctonear() - per_epoch_protocol_treasury.as_yoctonear())
-                / num_validators as u128,
-        );
+        let per_epoch_protocol_treasury = per_epoch_total_reward
+            .checked_mul(*self.runtime.genesis_config.protocol_reward_rate.numer().into())
+            .unwrap()
+            .checked_div(*self.runtime.genesis_config.protocol_reward_rate.denom().into())
+            .unwrap();
+        let per_epoch_per_validator_reward = per_epoch_total_reward
+            .checked_sub(per_epoch_protocol_treasury)
+            .unwrap()
+            .checked_div(num_validators)
+            .into();
         (per_epoch_per_validator_reward, per_epoch_protocol_treasury)
     }
 }

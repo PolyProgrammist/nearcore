@@ -177,7 +177,7 @@ pub(crate) fn find_threshold(
         for item in stakes {
             current_sum =
                 current_sum.checked_add(item.checked_div(mid.as_yoctonear()).unwrap()).unwrap();
-            if current_sum.as_yoctonear() >= u128::from(num_seats) {
+            if current_sum >= Balance::from_yoctonear(num_seats.into()) {
                 left = mid;
                 continue 'outer;
             }

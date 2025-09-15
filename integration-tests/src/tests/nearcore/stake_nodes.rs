@@ -194,7 +194,9 @@ fn slow_test_validator_kickout() {
                 4,
                 15,
                 false,
-                (TESTING_INIT_STAKE.as_yoctonear() / NEAR_BASE.as_yoctonear()) as u64 + 1,
+                TESTING_INIT_STAKE.checked_div(NEAR_BASE.as_yoctonear()).unwrap().as_yoctonear()
+                    as u64
+                    + 1,
                 false,
             );
             let mut rng = rand::thread_rng();

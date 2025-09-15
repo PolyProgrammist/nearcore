@@ -1625,9 +1625,7 @@ fn test_gas_price_change() {
         TESTING_INIT_BALANCE
             .checked_sub(target_num_tokens_left)
             .unwrap()
-            .checked_sub(Balance::from_yoctonear(
-                u128::from(send_money_total_gas.as_gas()) * min_gas_price.as_yoctonear(),
-            ))
+            .checked_sub(min_gas_price.checked_mul(send_money_total_gas.as_gas().into()))
             .unwrap(),
         genesis_hash,
     );

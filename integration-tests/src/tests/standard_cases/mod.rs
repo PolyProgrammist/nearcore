@@ -336,12 +336,11 @@ pub fn test_regression_nonce_update_with_mixed_transactions(node: impl Node) {
         receiver_id,
         &node_user.signer(),
         vec![Action::Transfer(TransferAction {
-            deposit: Balance::from_yoctonear(
-                TESTING_INIT_BALANCE.as_yoctonear()
-                    - TESTING_INIT_STAKE.as_yoctonear()
-                    - transfer_cost.as_yoctonear()
-                    - 199,
-            ),
+            deposit: TESTING_INIT_BALANCE
+                .checked_sub(TESTING_INIT_STAKE)
+                .and_then(|v| v.checked_sub(transfer_cost))
+                .and_then(|v| v.checked_sub(Balance::from_yoctonear(199)))
+                .unwrap(),
         })],
         block_hash,
         0,
@@ -420,12 +419,11 @@ pub fn test_send_money(node: impl Node) {
     assert_eq!(
         (amount, locked),
         (
-            Balance::from_yoctonear(
-                TESTING_INIT_BALANCE.as_yoctonear()
-                    - money_used.as_yoctonear()
-                    - TESTING_INIT_STAKE.as_yoctonear()
-                    - transfer_cost.as_yoctonear()
-            ),
+            TESTING_INIT_BALANCE
+                .checked_sub(money_used)
+                .and_then(|v| v.checked_sub(TESTING_INIT_STAKE))
+                .and_then(|v| v.checked_sub(transfer_cost))
+                .unwrap(),
             TESTING_INIT_STAKE
         )
     );
@@ -433,10 +431,10 @@ pub fn test_send_money(node: impl Node) {
     assert_eq!(
         (amount, locked),
         (
-            Balance::from_yoctonear(
-                TESTING_INIT_BALANCE.as_yoctonear() + money_used.as_yoctonear()
-                    - TESTING_INIT_STAKE.as_yoctonear()
-            ),
+            TESTING_INIT_BALANCE
+                .checked_add(money_used)
+                .and_then(|v| v.checked_sub(TESTING_INIT_STAKE))
+                .unwrap(),
             TESTING_INIT_STAKE,
         )
     );

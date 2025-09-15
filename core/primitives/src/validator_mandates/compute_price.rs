@@ -34,9 +34,7 @@ pub fn compute_mandate_price(config: ValidatorMandatesConfig, stakes: &[Balance]
     binary_search(Balance::from_yoctonear(1), total_stake, target_mandates, |mandate_price| {
         stakes
             .iter()
-            .map(|s: &Balance| {
-                Balance::from_yoctonear(s.as_yoctonear() / mandate_price.as_yoctonear())
-            })
+            .map(|s: &Balance| s.checked_div(mandate_price.as_yoctonear()))
             .fold(Balance::ZERO, |sum: Balance, item| sum.saturating_add(item))
             .as_yoctonear()
     })

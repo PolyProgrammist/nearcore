@@ -251,7 +251,7 @@ fn test_apply_refund_receipts() {
     );
 
     let n = 10;
-    let receipts = generate_refund_receipts(small_transfer.as_yoctonear(), n);
+    let receipts = generate_refund_receipts(small_transfer, n);
     let shard_uid = ShardUId::single_shard();
 
     // Checking n receipts delayed
@@ -297,7 +297,7 @@ fn test_apply_delayed_receipts_feed_all_at_once() {
     );
 
     let n = 10;
-    let receipts = generate_receipts(small_transfer.as_yoctonear(), n);
+    let receipts = generate_receipts(small_transfer, n);
     let shard_uid = ShardUId::single_shard();
 
     // Checking n receipts delayed by 1 + 3 extra
@@ -352,7 +352,7 @@ fn test_apply_delayed_receipts_add_more_using_chunks() {
     apply_state.gas_limit = Some(receipt_gas_cost.checked_mul(3).unwrap());
 
     let n = 40;
-    let receipts = generate_receipts(small_transfer.as_yoctonear(), n);
+    let receipts = generate_receipts(small_transfer, n);
     let mut receipt_chunks = receipts.chunks_exact(4);
     let shard_uid = ShardUId::single_shard();
 
@@ -406,7 +406,7 @@ fn test_apply_delayed_receipts_adjustable_gas_limit() {
         .unwrap();
 
     let n = 120;
-    let receipts = generate_receipts(small_transfer.as_yoctonear(), n);
+    let receipts = generate_receipts(small_transfer, n);
     let mut receipt_chunks = receipts.chunks_exact(4);
     let shard_uid = ShardUId::single_shard();
 
@@ -461,7 +461,7 @@ fn test_apply_delayed_receipts_adjustable_gas_limit() {
     }
 }
 
-fn generate_receipts(small_transfer: u128, n: u64) -> Vec<Receipt> {
+fn generate_receipts(small_transfer: Balance, n: u64) -> Vec<Receipt> {
     let mut receipt_id = CryptoHash::default();
     (0..n)
         .map(|i| {
@@ -477,7 +477,7 @@ fn generate_receipts(small_transfer: u128, n: u64) -> Vec<Receipt> {
                     output_data_receivers: vec![],
                     input_data_ids: vec![],
                     actions: vec![Action::Transfer(TransferAction {
-                        deposit: Balance::from_yoctonear(small_transfer + i as u128),
+                        deposit: small_transfer.checked_add(i.into()),
                     })],
                 }),
             })
@@ -485,21 +485,21 @@ fn generate_receipts(small_transfer: u128, n: u64) -> Vec<Receipt> {
         .collect()
 }
 
-fn generate_refund_receipts(small_transfer: u128, n: u64) -> Vec<Receipt> {
+fn generate_refund_receipts(small_transfer: Balance, n: u64) -> Vec<Receipt> {
     let mut receipt_id = CryptoHash::default();
     (0..n)
         .map(|i| {
             receipt_id = hash(receipt_id.as_ref());
             Receipt::new_balance_refund(
                 &alice_account(),
-                Balance::from_yoctonear(small_transfer + i as u128),
+                small_transfer.checked_add(i.into()),
                 ReceiptPriority::NoPriority,
             )
         })
         .collect()
 }
 
-fn generate_delegate_actions(deposit: u128, n: u64) -> Vec<Receipt> {
+fn generate_delegate_actions(deposit: Balance, n: u64) -> Vec<Receipt> {
     // Setup_runtime only creates alice_account() in state, hence we use the
     // id as relayer and sender. This allows the delegate action to execute
     // successfully. But the inner function call will fail, since the
@@ -514,7 +514,7 @@ fn generate_delegate_actions(deposit: u128, n: u64) -> Vec<Receipt> {
                 method_name: "foo".to_string(),
                 args: b"arg".to_vec(),
                 gas: MAX_ATTACHED_GAS,
-                deposit: Balance::from_yoctonear(deposit),
+                deposit: deposit,
             }))];
 
             let delegate_action = DelegateAction {
@@ -571,7 +571,7 @@ fn test_apply_delayed_receipts_local_tx() {
     apply_state.gas_limit = Some(receipt_exec_gas_fee.checked_mul(3).unwrap());
 
     let num_receipts = 6;
-    let receipts = generate_receipts(small_transfer.as_yoctonear(), num_receipts);
+    let receipts = generate_receipts(small_transfer, num_receipts);
     let shard_uid = ShardUId::single_shard();
 
     let num_transactions = 9;
@@ -778,7 +778,7 @@ fn test_apply_deficit_gas_for_transfer() {
     );
 
     let n = 1;
-    let mut receipts = generate_receipts(small_transfer.as_yoctonear(), n);
+    let mut receipts = generate_receipts(small_transfer, n);
     if let ReceiptEnum::Action(action_receipt) = receipts.get_mut(0).unwrap().receipt_mut() {
         action_receipt.gas_price = GAS_PRICE.checked_div(10).unwrap();
     }
@@ -817,7 +817,7 @@ fn test_apply_surplus_gas_for_transfer() {
     let gas_price = GAS_PRICE.checked_mul(10).unwrap();
 
     let n = 1;
-    let mut receipts = generate_receipts(small_transfer.as_yoctonear(), n);
+    let mut receipts = generate_receipts(small_transfer, n);
     if let ReceiptEnum::Action(action_receipt) = receipts.get_mut(0).unwrap().receipt_mut() {
         action_receipt.gas_price = gas_price;
     }
@@ -2710,7 +2710,7 @@ fn test_congestion_delayed_receipts_accounting() {
     );
 
     let n = 10;
-    let receipts = generate_receipts(deposit.as_yoctonear(), n);
+    let receipts = generate_receipts(deposit, n);
 
     let apply_result = runtime
         .apply(
@@ -2815,7 +2815,7 @@ fn test_congestion_buffering() {
     // delegate actions are currently the two only choices. We use delegate
     // actions because this doesn't require a contract setup.
     let n = 10;
-    let receipts = generate_delegate_actions(deposit.as_yoctonear(), n);
+    let receipts = generate_delegate_actions(deposit, n);
 
     // Checking n receipts delayed by 1 + 3 extra
     for i in 1..=n + 3 {

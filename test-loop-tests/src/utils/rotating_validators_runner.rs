@@ -20,7 +20,7 @@ use crate::utils::transactions;
 pub struct RotatingValidatorsRunner {
     validators: Vec<Vec<Validator>>,
     validators_index: usize,
-    max_stake: u128,
+    max_stake: Balance,
 
     assert_validation_rotation: bool,
     max_epoch_duration: Option<Duration>,
@@ -30,7 +30,7 @@ pub struct RotatingValidatorsRunner {
 impl RotatingValidatorsRunner {
     /// Created new runner that allows running with rotating validators. It works by changing
     /// stakes on epoch change.
-    pub fn new(max_stake: u128, validators: Vec<Vec<AccountId>>) -> Self {
+    pub fn new(max_stake: Balance, validators: Vec<Vec<AccountId>>) -> Self {
         assert!(validators.len() > 1);
         let validators = validators
             .into_iter()
@@ -60,10 +60,7 @@ impl RotatingValidatorsRunner {
                     if i == index {
                         // Using max_stake - i for stake allows some of the validators to be block
                         // and chunk producers while keeping others as chunk validators only.
-                        v.stake_tx(
-                            &env,
-                            Balance::from_yoctonear(self.max_stake - u128::try_from(j).unwrap()),
-                        )
+                        v.stake_tx(&env, self.max_stake.checked_sub(u128::try_from(j).unwrap()))
                     } else {
                         v.stake_tx(&env, Balance::ZERO)
                     }
@@ -268,7 +265,7 @@ impl RotatingValidatorsRunner {
                 .map(|(i, v)| AccountInfo {
                     account_id: v.account.clone(),
                     public_key: v.signer.public_key(),
-                    amount: Balance::from_yoctonear(self.max_stake - u128::try_from(i).unwrap()),
+                    amount: self.max_stake.checked_sub(u128::try_from(i).unwrap()),
                 })
                 .collect(),
             num_block_producer_seats,

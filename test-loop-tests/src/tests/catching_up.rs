@@ -101,7 +101,7 @@ fn test_catchup_random_single_part_sync_common(
     let seats: NumSeats = 8;
 
     let stake = Balance::from_near(1);
-    let mut runner = RotatingValidatorsRunner::new(stake.as_yoctonear(), validators);
+    let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let test_accounts: Vec<AccountId> =
         (0..16).map(|i| format!("test_account{i}").parse().unwrap()).collect_vec();
@@ -289,7 +289,7 @@ fn slow_test_catchup_sanity_blocks_produced() {
     let seats: NumSeats = 8;
 
     let stake = Balance::from_near(1);
-    let mut runner = RotatingValidatorsRunner::new(stake.as_yoctonear(), validators);
+    let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let accounts = runner.all_validators_accounts();
     let num_shards = 4;
@@ -386,7 +386,7 @@ fn slow_test_all_chunks_accepted() {
     let seats: NumSeats = 8;
 
     let stake = Balance::from_near(1);
-    let mut runner = RotatingValidatorsRunner::new(stake.as_yoctonear(), validators);
+    let mut runner = RotatingValidatorsRunner::new(stake, validators);
 
     let accounts = runner.all_validators_accounts();
     let num_shards = 4;

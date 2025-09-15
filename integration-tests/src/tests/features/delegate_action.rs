@@ -153,12 +153,8 @@ fn check_meta_tx_no_fn_call(
     receiver: AccountId,
 ) -> FinalExecutionOutcomeView {
     let fee_helper = fee_helper(node);
-    let gas_cost = Balance::from_yoctonear(
-        normal_tx_cost
-            .as_yoctonear()
-            .checked_add(fee_helper.meta_tx_overhead_cost(&actions, &receiver).as_yoctonear())
-            .unwrap(),
-    );
+    let gas_cost =
+        normal_tx_cost.checked_add(fee_helper.meta_tx_overhead_cost(&actions, &receiver)).unwrap();
 
     let (tx_result, sender_diff, relayer_diff, receiver_diff) =
         check_meta_tx_execution(node, actions, sender, relayer, receiver);
@@ -171,8 +167,7 @@ fn check_meta_tx_no_fn_call(
     );
     assert_eq!(
         relayer_diff,
-        -((gas_cost.as_yoctonear().checked_add(tokens_transferred.as_yoctonear()).unwrap())
-            as i128),
+        -((gas_cost.checked_add(tokens_transferred).unwrap().as_yoctonear()) as i128),
         "unexpected relayer balance"
     );
 
@@ -267,30 +262,24 @@ fn check_meta_tx_fn_call(
     let refund_penalty = fee_helper.gas_refund_cost(gross_gas_refund);
 
     // the relayer pays all gas and tokens
-    let gas_cost = Balance::from_yoctonear(
-        meta_tx_overhead_cost
-            .as_yoctonear()
-            .checked_add(refund_penalty.as_yoctonear())
-            .unwrap()
-            .checked_add(
-                fee_helper
-                    .gas_to_balance(static_exec_gas.checked_add(static_send_gas).unwrap())
-                    .as_yoctonear(),
-            )
-            .unwrap(),
-    );
-    let expected_relayer_cost = (gas_cost
-        .as_yoctonear()
-        .checked_add(tokens_transferred.as_yoctonear())
+    let gas_cost = meta_tx_overhead_cost
+        .checked_add(refund_penalty)
         .unwrap()
-        .checked_add(dyn_cost.as_yoctonear())
-        .unwrap()) as i128;
+        .checked_add(
+            fee_helper.gas_to_balance(static_exec_gas.checked_add(static_send_gas).unwrap()),
+        )
+        .unwrap();
+    let expected_relayer_cost = (gas_cost
+        .checked_add(tokens_transferred)
+        .unwrap()
+        .checked_add(dyn_cost)
+        .unwrap()
+        .as_yoctonear()) as i128;
     assert_eq!(relayer_diff, -expected_relayer_cost, "unexpected relayer balance");
 
     // the receiver gains transferred tokens and the contract reward
     let expected_receiver_gain =
-        (tokens_transferred.as_yoctonear().checked_add(contract_reward.as_yoctonear()).unwrap())
-            as i128;
+        (tokens_transferred.checked_add(contract_reward).unwrap().as_yoctonear()) as i128;
     assert_eq!(receiver_diff, expected_receiver_gain, "unexpected receiver balance");
 
     tx_result
@@ -602,13 +591,10 @@ fn meta_tx_delete_account() {
         vec![Action::DeleteAccount(DeleteAccountAction { beneficiary_id: relayer.clone() })];
 
     // special case balance check for deleting account
-    let gas_cost = Balance::from_yoctonear(
-        fee_helper
-            .prepaid_delete_account_cost()
-            .as_yoctonear()
-            .checked_add(fee_helper.meta_tx_overhead_cost(&actions, &receiver).as_yoctonear())
-            .unwrap(),
-    );
+    let gas_cost = fee_helper
+        .prepaid_delete_account_cost()
+        .checked_add(fee_helper.meta_tx_overhead_cost(&actions, &receiver))
+        .unwrap();
     let (_tx_result, sender_diff, relayer_diff, receiver_diff) =
         check_meta_tx_execution(&node, actions, sender, relayer, receiver.clone());
 
@@ -1007,7 +993,7 @@ fn meta_tx_create_implicit_account(new_account: AccountId) {
     }
 
     // Now test we can use this account in a meta transaction that sends back half the tokens to alice.
-    let transfer_amount = Balance::from_yoctonear(initial_amount.as_yoctonear() / 2);
+    let transfer_amount = initial_amount.checked_div(2).unwrap();
     let actions = vec![Action::Transfer(TransferAction { deposit: transfer_amount })];
     let tx_cost = fee_helper.transfer_cost();
     check_meta_tx_no_fn_call(
