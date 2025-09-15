@@ -200,8 +200,9 @@ fn slow_test_validator_kickout() {
                 false,
             );
             let mut rng = rand::thread_rng();
-            let stakes = (0..num_nodes / 2)
-                .map(|_| NEAR_BASE.checked_add(Balance::from_yoctonear(rng.gen_range(1..100))).unwrap());
+            let stakes = (0..num_nodes / 2).map(|_| {
+                NEAR_BASE.checked_add(Balance::from_yoctonear(rng.gen_range(1..100))).unwrap()
+            });
             let stake_transactions = stakes.enumerate().map(|(i, stake)| {
                 let test_node = &test_nodes[i];
                 let signer = Arc::new(InMemorySigner::test_signer(&test_node.account_id));

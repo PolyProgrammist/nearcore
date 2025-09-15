@@ -118,8 +118,12 @@ fn run_chunk_validation_test(
             access_key: AccessKey::full_access(),
         });
         // The total supply must be correct to pass validation.
-        genesis_config.total_supply =
-            genesis_config.total_supply.checked_add(initial_balance).unwrap().checked_add(staked).unwrap();
+        genesis_config.total_supply = genesis_config
+            .total_supply
+            .checked_add(initial_balance)
+            .unwrap()
+            .checked_add(staked)
+            .unwrap();
     }
     let genesis = Genesis::new(genesis_config, GenesisRecords(records)).unwrap();
     let mut env = TestEnv::builder(&genesis.config)
