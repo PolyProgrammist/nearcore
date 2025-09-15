@@ -150,11 +150,7 @@ impl From<AccountView> for Account {
 #[repr(u8)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum AccessKeyPermissionView {
-    FunctionCall {
-        allowance: Option<Balance>,
-        receiver_id: String,
-        method_names: Vec<String>,
-    } = 0,
+    FunctionCall { allowance: Option<Balance>, receiver_id: String, method_names: Vec<String> } = 0,
     FullAccess = 1,
 }
 
