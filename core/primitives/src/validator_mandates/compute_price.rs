@@ -254,7 +254,7 @@ mod tests {
         stakes
             .iter()
             .fold(Balance::ZERO, |sum, item| {
-                sum.saturating_add(item.checked_div(mandate_price.as_yoctonear()).unwrap()).unwrap()
+                sum.saturating_add(item.checked_div(mandate_price.as_yoctonear()).unwrap())
             })
             .as_yoctonear() as usize
     }
