@@ -117,9 +117,7 @@ fn test_burn_mint() {
     // Average uptime: (2/2 + 1/2 + 1/1) / 3 = 5/6
     // 1/10 + 5/6 * 9/10 = 85/100
     let expected_total_supply = initial_total_supply
-        .checked_add(Balance::from_yoctonear(
-            epoch_total_reward.checked_mul(85).unwrap().checked_div(100),
-        ))
+        .checked_add(epoch_total_reward.checked_mul(85).unwrap().checked_div(100).unwrap())
         .unwrap()
         .checked_sub(half_transfer_cost)
         .unwrap();
@@ -135,13 +133,13 @@ fn test_burn_mint() {
     // Check that Protocol Treasury account got it's 1% as well.
     assert_eq!(
         env.query_balance("near".parse().unwrap()),
-        near_balance.checked_add(epoch_total_reward.checked_div(10)).unwrap()
+        near_balance.checked_add(epoch_total_reward.checked_div(10).unwrap()).unwrap()
     );
     // Block 5: reward from previous block.
     let block5 = env.clients[0].chain.get_block_by_height(5).unwrap();
     let prev_total_supply = block4.header().total_supply();
     let block2 = env.clients[0].chain.get_block_by_height(2).unwrap();
-    let epoch_total_reward = Balance::from(
+    let epoch_total_reward = Balance::from_yoctonear(
         (U256::from(prev_total_supply)
             * U256::from(block4.header().raw_timestamp() - block2.header().raw_timestamp())
             / U256::from(10u128.pow(9) * 24 * 60 * 60 * 365 * 10))

@@ -363,7 +363,7 @@ fn slow_test_tx_not_enough_balance_must_return_error() {
             "near.0".parse().unwrap(),
             "near.1".parse().unwrap(),
             &signer,
-            Balance::from_yoctonear(1100000000000000000000000000000000),
+            Balance::from_near(1100000000),
             genesis_hash,
         );
 

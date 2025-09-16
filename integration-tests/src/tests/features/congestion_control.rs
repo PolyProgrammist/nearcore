@@ -90,7 +90,7 @@ fn setup_account(
     let signer = InMemorySigner::test_signer(&signer_id);
 
     let public_key = PublicKey::from_seed(KeyType::ED25519, account_id.as_str());
-    let amount = Balance::from_yoctonear(10 * 10u128.pow(24));
+    let amount = Balance::from_near(10);
 
     *nonce += 1;
     let create_account_tx = SignedTransaction::create_account(
@@ -124,7 +124,7 @@ fn setup_contract(env: &mut TestEnv, nonce: &mut u64) {
         signer_id,
         CONTRACT_ID.parse().unwrap(),
         contract.to_vec(),
-        Balance::from_yoctonear(10 * 10u128.pow(24)),
+        Balance::from_near(10),
         PublicKey::from_seed(KeyType::ED25519, CONTRACT_ID),
         &signer,
         *block.hash(),

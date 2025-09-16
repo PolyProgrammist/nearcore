@@ -914,15 +914,17 @@ fn test_apply_deficit_gas_for_function_call_covered() {
         gas_price.checked_mul(expected_gas_burnt.as_gas().into()).unwrap()
     };
     // With gas refund penalties enabled, we should see a reduced refund value
-    let unspent_gas = total_receipt_cost
-        .checked_sub(expected_gas_burnt_amount)
-        .unwrap()
-        .checked_div(gas_price.as_yoctonear())
-        .unwrap();
-    let refund_penalty = apply_state
-        .config
-        .fees
-        .gas_penalty_for_gas_refund(Gas::from_gas(unspent_gas.as_yoctonear().try_into().unwrap()));
+    let unspent_gas: Gas = Gas::from_gas(
+        total_receipt_cost
+            .checked_sub(expected_gas_burnt_amount)
+            .unwrap()
+            .checked_div(gas_price.as_yoctonear())
+            .unwrap()
+            .as_yoctonear()
+            .try_into()
+            .unwrap(),
+    );
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas);
     let expected_refund = total_receipt_cost
         .checked_sub(expected_gas_burnt_amount)
         .unwrap()
@@ -1104,15 +1106,20 @@ fn test_apply_surplus_gas_for_function_call() {
     };
 
     // With gas refund penalties enabled, we should see a reduced refund value
-    let unspent_gas = total_receipt_cost
-        .checked_sub(expected_gas_burnt_amount)
-        .unwrap()
-        .checked_div(gas_price.as_yoctonear())
-        .unwrap();
+    let unspent_gas = Gas::from_gas(
+        total_receipt_cost
+            .checked_sub(expected_gas_burnt_amount)
+            .unwrap()
+            .checked_div(gas_price.as_yoctonear())
+            .unwrap()
+            .as_yoctonear()
+            .try_into()
+            .unwrap(),
+    );
     let refund_penalty = apply_state
         .config
         .fees
-        .gas_penalty_for_gas_refund(Gas::from_gas(unspent_gas.as_yoctonear().try_into().unwrap()));
+        .gas_penalty_for_gas_refund(unspent_gas);
     let expected_refund = total_receipt_cost
         .checked_sub(expected_gas_burnt_amount)
         .unwrap()

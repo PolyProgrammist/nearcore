@@ -269,17 +269,17 @@ fn check_meta_tx_fn_call(
             fee_helper.gas_to_balance(static_exec_gas.checked_add(static_send_gas).unwrap()),
         )
         .unwrap();
-    let expected_relayer_cost = (gas_cost
+    let expected_relayer_cost = gas_cost
         .checked_add(tokens_transferred)
         .unwrap()
         .checked_add(dyn_cost)
         .unwrap()
-        .as_yoctonear()) as i128;
+        .as_yoctonear() as i128;
     assert_eq!(relayer_diff, -expected_relayer_cost, "unexpected relayer balance");
 
     // the receiver gains transferred tokens and the contract reward
     let expected_receiver_gain =
-        (tokens_transferred.checked_add(contract_reward).unwrap().as_yoctonear()) as i128;
+        tokens_transferred.checked_add(contract_reward).unwrap().as_yoctonear() as i128;
     assert_eq!(receiver_diff, expected_receiver_gain, "unexpected receiver balance");
 
     tx_result
@@ -297,7 +297,7 @@ fn meta_tx_near_transfer() {
     let node = RuntimeNode::new(&relayer);
     let fee_helper = fee_helper(&node);
 
-    let amount = Balance::from_near(1);
+    let amount = NEAR_BASE;
     let actions = vec![Action::Transfer(TransferAction { deposit: amount })];
     let tx_cost = fee_helper.transfer_cost();
     check_meta_tx_no_fn_call(&node, actions, tx_cost, amount, sender, relayer, receiver);
@@ -574,7 +574,7 @@ fn meta_tx_delete_account() {
     let node = RuntimeNode::new(&relayer);
 
     // setup: create new account because the standard accounts are validators (can't be deleted)
-    let balance = Balance::from_near(1);
+    let balance = NEAR_BASE;
     node.user()
         .create_account(
             relayer.clone(),
@@ -752,7 +752,7 @@ fn ft_register_action(receiver: &str) -> Action {
         method_name: "storage_deposit".to_owned(),
         args,
         gas: Gas::from_teragas(20),
-        deposit: Balance::from_near(1),
+        deposit: NEAR_BASE,
     }))
 }
 
@@ -802,13 +802,7 @@ fn setup_with_access_key(
     let access_key = fn_access_key(allowance, receiver.to_string(), vec![method.to_owned()]);
     let mut genesis = Genesis::test(vec![user.clone(), receiver.clone()], 3);
     add_test_contract(&mut genesis, &receiver);
-    add_account_with_access_key(
-        &mut genesis,
-        sender.clone(),
-        Balance::from_near(1),
-        public_key,
-        access_key,
-    );
+    add_account_with_access_key(&mut genesis, sender.clone(), NEAR_BASE, public_key, access_key);
     RuntimeNode::new_from_genesis(user, genesis)
 }
 
@@ -839,7 +833,7 @@ fn meta_tx_create_named_account() {
     let node = RuntimeNode::new(&relayer);
 
     let fee_helper = fee_helper(&node);
-    let amount = Balance::from_near(1);
+    let amount = NEAR_BASE;
 
     let public_key = PublicKey::from_seed(KeyType::ED25519, new_account.as_ref());
 
@@ -910,7 +904,7 @@ fn meta_tx_create_and_use_implicit_account(new_account: AccountId) {
     // Check the account doesn't exist, yet. We will attempt creating it.
     node.view_account(&new_account).expect_err("account already exists");
 
-    let initial_amount = Balance::from_near(1);
+    let initial_amount = NEAR_BASE;
     let actions = vec![
         Action::Transfer(TransferAction { deposit: initial_amount }),
         Action::DeployContract(DeployContractAction { code: ft_contract().to_vec() }),
@@ -958,7 +952,7 @@ fn meta_tx_create_implicit_account(new_account: AccountId) {
 
     let fee_helper = fee_helper(&node);
     let initial_amount = match new_account.get_account_type() {
-        AccountType::NearImplicitAccount => Balance::from_near(1),
+        AccountType::NearImplicitAccount => NEAR_BASE,
         // ETH-implicit accounts fit within zero-balance account limit.
         AccountType::EthImplicitAccount => Balance::ZERO,
         AccountType::NamedAccount => panic!("must be implicit"),

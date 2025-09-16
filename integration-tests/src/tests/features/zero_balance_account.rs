@@ -141,7 +141,7 @@ fn test_zero_balance_account_add_key() {
     let signer0 = InMemorySigner::test_signer(&signer0_account_id);
     let new_signer: Signer = InMemorySigner::test_signer(&new_account_id);
 
-    let amount = Balance::from_yoctonear(10u128.pow(24));
+    let amount = Balance::from_near(1);
     let create_account_tx = SignedTransaction::create_account(
         1,
         signer0_account_id.clone(),

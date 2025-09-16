@@ -1123,7 +1123,7 @@ mod tests {
                 alice_account(),
                 bob_account(),
                 &*signer,
-                Balance::from_yoctonear(u128::max_value()),
+                Balance::MAX,
                 CryptoHash::default(),
             ),
             InvalidTxError::CostOverflow,

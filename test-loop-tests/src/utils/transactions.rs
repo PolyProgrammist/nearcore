@@ -114,7 +114,7 @@ pub(crate) fn execute_money_transfers(
     let node_data = Arc::new(node_datas.to_vec());
 
     for i in 0..accounts.len() {
-        let amount = Balance::from_near(i as u128 + 1);
+        let amount = Balance::from_near((i + 1).try_into().unwrap());
         let sender = accounts[i].clone();
         let receiver = accounts[(i + 1) % accounts.len()].clone();
         let node_data = node_data.clone();

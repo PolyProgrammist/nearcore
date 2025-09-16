@@ -122,7 +122,7 @@ fn get_status_of_tx_hash_collision_for_near_implicit_account(
     genesis.config.protocol_version = protocol_version;
     let mut env = TestEnv::builder(&genesis.config).nightshade_runtimes(&genesis).build();
     let genesis_block = env.clients[0].chain.get_block_by_height(0).unwrap();
-    let deposit_for_account_creation = Balance::from_yoctonear(10u128.pow(23));
+    let deposit_for_account_creation = Balance::from_millinear(100);
     let mut height = 1;
     let blocks_number = 5;
     let signer1 = InMemorySigner::test_signer(&"test1".parse().unwrap());

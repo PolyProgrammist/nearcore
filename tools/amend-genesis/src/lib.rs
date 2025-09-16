@@ -744,7 +744,7 @@ mod test {
                 TestStateRecord::Account {
                     account_id: "asdf.near",
                     amount: Balance::from_yoctonear(1_234_000),
-                    locked: Balance::from_yoctonear(0),
+                    locked: Balance::ZERO,
                     storage_usage: 182,
                 },
                 TestStateRecord::AccessKey {

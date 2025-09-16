@@ -1592,7 +1592,7 @@ fn test_gas_price_change() {
     init_test_logger();
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap(), "test1".parse().unwrap()], 1);
     let target_num_tokens_left =
-        NEAR_BASE.checked_div(10).unwrap().checked_add(Balance::from_yoctonear(1));
+        NEAR_BASE.checked_div(10).unwrap().checked_add(Balance::from_yoctonear(1)).unwrap();
     let transaction_costs = RuntimeConfig::test().fees;
 
     let send_money_total_gas = transaction_costs

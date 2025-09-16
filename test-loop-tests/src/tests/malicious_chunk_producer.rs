@@ -3,6 +3,7 @@
 
 use crate::setup::builder::TestLoopBuilder;
 use crate::setup::env::TestLoopEnv;
+use crate::utils::ONE_NEAR;
 use crate::utils::client_queries::ClientQueries;
 use crate::utils::transactions::get_anchor_hash;
 use near_async::messaging::CanSend as _;
@@ -73,7 +74,7 @@ fn test_producer_with_expired_transactions() {
                 sender,
                 receiver,
                 &signer,
-                Balance::from_near(1),
+                ONE_NEAR,
                 anchor_hash,
             );
             let process_tx_request =

@@ -165,7 +165,7 @@ fn run_chunk_validation_test(
                 sender_account,
                 receiver_account,
                 &signer,
-                Balance::from_near(1),
+                ONE_NEAR,
                 tip.last_block_hash,
             );
             tx_hashes.push(tx.get_hash());
