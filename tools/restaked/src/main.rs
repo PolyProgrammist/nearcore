@@ -68,10 +68,7 @@ fn main() {
     let rpc_url = matches.get_one::<String>("rpc-url").unwrap();
     let stake_amount: Balance = matches
         .get_one::<String>("stake-amount")
-        .map(|s| {
-            let amount: u128 = s.parse().expect("Stake amount must be a number");
-            Balance::from_yoctonear(amount)
-        })
+        .map(|s| Balance::from_yoctonear(s.parse().expect("Stake amount must be a number")))
         .unwrap();
 
     let config = Config::from_file(&home_dir.join(CONFIG_FILENAME)).expect("can't load config");

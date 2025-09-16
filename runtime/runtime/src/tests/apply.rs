@@ -1116,10 +1116,7 @@ fn test_apply_surplus_gas_for_function_call() {
             .try_into()
             .unwrap(),
     );
-    let refund_penalty = apply_state
-        .config
-        .fees
-        .gas_penalty_for_gas_refund(unspent_gas);
+    let refund_penalty = apply_state.config.fees.gas_penalty_for_gas_refund(unspent_gas);
     let expected_refund = total_receipt_cost
         .checked_sub(expected_gas_burnt_amount)
         .unwrap()

@@ -1869,14 +1869,11 @@ impl Chain {
 
             // Get chunk producers count and total stake
             if let Ok(producers) = self.epoch_manager.get_epoch_chunk_producers(&tip.epoch_id) {
-                stake = stake
-                    .checked_add(
-                        producers
-                            .iter()
-                            .map(|info| info.stake())
-                            .fold(Balance::ZERO, |sum, item| sum.checked_add(item).unwrap()),
-                    )
-                    .unwrap();
+                let cumulative_producers_stake = producers
+                    .iter()
+                    .map(|info| info.stake())
+                    .fold(Balance::ZERO, |sum, item| sum.checked_add(item).unwrap());
+                stake = stake.checked_add(cumulative_producers_stake).unwrap();
                 chunk_producers_count += producers.len();
             }
 

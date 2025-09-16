@@ -319,14 +319,11 @@ impl EpochManager {
                 break;
             }
             if !prev_validator_kickout.contains_key(account_id) {
-                exempted_stake = exempted_stake
-                    .checked_add(
-                        epoch_info
-                            .get_validator_by_account(account_id)
-                            .map(|v| v.stake())
-                            .unwrap_or_default(),
-                    )
-                    .unwrap();
+                let validator_stake = epoch_info
+                    .get_validator_by_account(account_id)
+                    .map(|v| v.stake())
+                    .unwrap_or_default();
+                exempted_stake = exempted_stake.checked_add(validator_stake).unwrap();
                 exempted_validators.insert(account_id.clone());
             }
         }

@@ -529,7 +529,7 @@ fn slow_test_inflation() {
                                         .await
                                         .unwrap()
                                         .unwrap();
-                                    (U256::from(initial_total_supply)
+                                    Balance::from_yoctonear((U256::from(initial_total_supply)
                                         * U256::from(
                                             epoch_end_block_view.header.timestamp_nanosec
                                                 - genesis_block_view.header.timestamp_nanosec,
@@ -537,7 +537,7 @@ fn slow_test_inflation() {
                                         * U256::from(*max_inflation_rate.numer() as u64)
                                         / (U256::from(10u64.pow(9) * 365 * 24 * 60 * 60)
                                             * U256::from(*max_inflation_rate.denom() as u64)))
-                                    .as_u128()
+                                    .as_u128())
                                 };
                                 // To match rounding, split into protocol reward and validator reward.
                                 // Protocol reward is one tenth of the base reward, while validator reward is the remainder.
@@ -550,12 +550,12 @@ fn slow_test_inflation() {
                                 //
                                 // For additional details check: chain/epoch-manager/src/reward_calculator.rs or
                                 // https://nomicon.io/Economics/Economic#validator-rewards-calculation
-                                let protocol_reward = base_reward * 1 / 10;
-                                let validator_reward = base_reward - protocol_reward;
+                                let protocol_reward = base_reward.checked_div(10).unwrap();
+                                let validator_reward = base_reward.checked_sub(protocol_reward).unwrap();
                                 // Chunk endorsement ratio 9/10 is mapped to 1 so the reward multiplier becomes 20/27.
-                                let inflation = protocol_reward + validator_reward * 20 / 27;
+                                let inflation = protocol_reward.checked_add(validator_reward.checked_mul(20).unwrap().checked_div(27).unwrap()).unwrap();
                                 tracing::info!(?block.header.total_supply, ?block.header.height, ?initial_total_supply, epoch_length, ?inflation, "Step2: epoch2");
-                                if block.header.total_supply == initial_total_supply.checked_add(Balance::from_yoctonear(inflation)).unwrap() {
+                                if block.header.total_supply == initial_total_supply.checked_add(inflation).unwrap() {
                                     done2_copy2.store(true, Ordering::SeqCst);
                                 }
                             } else {

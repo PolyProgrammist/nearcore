@@ -1,6 +1,7 @@
 use near_token::NearToken;
 use primitive_types::U256;
 
+/// Wrapper type over [`near_token::NearToken`], which itself is a wrapper type over u128.
 #[derive(
     borsh::BorshDeserialize,
     borsh::BorshSerialize,
@@ -24,7 +25,9 @@ pub struct Balance(NearToken);
 const ONE_NEAR: u128 = 10_u128.pow(24);
 
 impl Balance {
+    /// Maximum value for Balance (u128::MAX)
     pub const MAX: Balance = Balance::from_yoctonear(u128::MAX);
+    /// Zero value for Balance
     pub const ZERO: Balance = Balance::from_yoctonear(0);
 }
 

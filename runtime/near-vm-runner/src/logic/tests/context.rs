@@ -89,24 +89,24 @@ decl_test_u128!(test_attached_deposit, attached_deposit, ctx, ctx.attached_depos
 #[test]
 fn test_attached_deposit_view() {
     #[track_caller]
-    fn test_view(amount: u128) {
+    fn test_view(amount: Balance) {
         let mut logic_builder = VMLogicBuilder::default();
         let context = &mut logic_builder.context;
         context.view_config =
             Some(ViewConfig { max_gas_burnt: test_vm_config(None).limit_config.max_gas_burnt });
         context.account_balance = Balance::ZERO;
-        context.attached_deposit = Balance::from_yoctonear(amount);
+        context.attached_deposit = amount;
         let mut logic = logic_builder.build();
 
         logic.attached_deposit(0).expect("read from context should be ok");
         let buf =
             logic.internal_mem_read(0, std::mem::size_of::<u128>() as u64).try_into().unwrap();
 
-        let res = u128::from_le_bytes(buf);
+        let res = Balance::from_yoctonear(u128::from_le_bytes(buf));
         assert_eq!(res, amount);
     }
 
-    test_view(0);
-    test_view(1);
-    test_view(u128::MAX);
+    test_view(Balance::ZERO);
+    test_view(Balance::from_yoctonear(1));
+    test_view(Balance::MAX);
 }

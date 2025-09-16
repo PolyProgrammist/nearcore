@@ -77,26 +77,27 @@ impl RewardCalculator {
         } else {
             self.protocol_reward_rate
         };
-        let epoch_total_reward: u128 = (U256::from(*max_inflation_rate.numer() as u64)
-            * U256::from(total_supply)
-            * U256::from(epoch_duration)
-            / (U256::from(self.num_seconds_per_year)
-                * U256::from(*max_inflation_rate.denom() as u64)
-                * U256::from(NUM_NS_IN_SECOND)))
-        .as_u128();
-        let epoch_protocol_treasury = (U256::from(epoch_total_reward)
-            * U256::from(*protocol_reward_rate.numer() as u64)
-            / U256::from(*protocol_reward_rate.denom() as u64))
-        .as_u128();
-        res.insert(
-            self.protocol_treasury_account.clone(),
-            Balance::from_yoctonear(epoch_protocol_treasury),
+        let epoch_total_reward = Balance::from_yoctonear(
+            (U256::from(*max_inflation_rate.numer() as u64)
+                * U256::from(total_supply)
+                * U256::from(epoch_duration)
+                / (U256::from(self.num_seconds_per_year)
+                    * U256::from(*max_inflation_rate.denom() as u64)
+                    * U256::from(NUM_NS_IN_SECOND)))
+            .as_u128(),
         );
+        let epoch_protocol_treasury = Balance::from_yoctonear(
+            (U256::from(epoch_total_reward) * U256::from(*protocol_reward_rate.numer() as u64)
+                / U256::from(*protocol_reward_rate.denom() as u64))
+            .as_u128(),
+        );
+        res.insert(self.protocol_treasury_account.clone(), epoch_protocol_treasury);
         if num_validators == 0 {
             return (res, Balance::ZERO);
         }
-        let epoch_validator_reward = epoch_total_reward - epoch_protocol_treasury;
-        let mut epoch_actual_reward = Balance::from_yoctonear(epoch_protocol_treasury);
+        let epoch_validator_reward =
+            epoch_total_reward.checked_sub(epoch_protocol_treasury).unwrap();
+        let mut epoch_actual_reward = epoch_protocol_treasury;
         let total_stake: Balance = validator_stake
             .values()
             .fold(Balance::ZERO, |sum, item| sum.checked_add(*item).unwrap());
@@ -140,7 +141,7 @@ impl RewardCalculator {
                 uptime_numer =
                     if uptime_numer > uptime_denum { uptime_denum } else { uptime_numer };
                 Balance::from_yoctonear(
-                    (U512::from(epoch_validator_reward)
+                    (U512::from(epoch_validator_reward.as_yoctonear())
                         * U512::from(uptime_numer)
                         * U512::from(stake.as_yoctonear())
                         / U512::from(uptime_denum)

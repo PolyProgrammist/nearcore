@@ -892,16 +892,16 @@ fn test_bad_chunk_mask() {
 
 #[test]
 fn test_minimum_gas_price() {
-    let min_gas_price = 100;
+    let min_gas_price = Balance::from_yoctonear(100);
     let mut genesis = Genesis::test(vec!["test0".parse().unwrap()], 1);
-    genesis.config.min_gas_price = Balance::from_yoctonear(min_gas_price);
+    genesis.config.min_gas_price = min_gas_price;
     genesis.config.gas_price_adjustment_rate = Ratio::new(1, 10);
     let mut env = TestEnv::builder_from_genesis(&genesis).build();
     for i in 1..=100 {
         env.produce_block(0, i);
     }
     let block = env.clients[0].chain.get_block_by_height(100).unwrap();
-    assert!(block.header().next_gas_price() >= Balance::from_yoctonear(min_gas_price));
+    assert!(block.header().next_gas_price() >= min_gas_price);
 }
 
 fn test_gc_with_epoch_length_common(epoch_length: NumBlocks) {
