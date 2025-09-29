@@ -46,7 +46,12 @@ impl From<RpcBlockError> for crate::errors::RpcError {
         };
 
         let error_data_value = match serde_json::to_value(error) {
-            Ok(value) => value,
+            Ok(value) => {
+                return Self::new_internal_error(
+                    None,
+                    format!("Failed to serialize RpcBlockError: hehe"),
+                );
+            },
             Err(err) => {
                 return Self::new_internal_error(
                     None,

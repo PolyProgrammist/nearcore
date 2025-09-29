@@ -1463,7 +1463,7 @@ async fn rpc_handler(
                     _ => StatusCode::OK,
                 }
             }
-            Some(RpcErrorKind::InternalError(_)) => StatusCode::INTERNAL_SERVER_ERROR,
+            Some(RpcErrorKind::InternalError(_)) => StatusCode::OK,
             None => StatusCode::OK,
         },
     };
