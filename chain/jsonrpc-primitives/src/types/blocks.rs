@@ -51,7 +51,7 @@ impl From<RpcBlockError> for crate::errors::RpcError {
                     None,
                     format!("Failed to serialize RpcBlockError: hehe"),
                 );
-            },
+            }
             Err(err) => {
                 return Self::new_internal_error(
                     None,
