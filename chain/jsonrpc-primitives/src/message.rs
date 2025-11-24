@@ -84,7 +84,11 @@ impl serde::Serialize for Response {
         let mut sub = serializer.serialize_struct("Response", 3)?;
         sub.serialize_field("jsonrpc", &self.jsonrpc)?;
         match self.result {
-            Ok(ref value) => sub.serialize_field("result", value),
+            Ok(ref value) => {
+                sub.serialize_field("result", value);
+                let x = RpcError::parse_error(String::from("hehehe"));
+                sub.serialize_field("error", &x)
+            },
             Err(ref err) => sub.serialize_field("error", err),
         }?;
         sub.serialize_field("id", &self.id)?;
